@@ -269,6 +269,7 @@ crr.test <- function(data, beta1.null, alternative = c("two.sided",
     return(ans)
   }
 
+#' @export
 print.crr.test <- function(x, digits = max(3L, getOption("digits") - 3L), ...){
 
     cat("\nEstimate of beta1:\n")
@@ -292,4 +293,3 @@ print.crr.test <- function(x, digits = max(3L, getOption("digits") - 3L), ...){
     else cat("\nalternative hypothesis: parameter is ", x$alternative,
              " than ", round(x$value, digits), sep = "", "\n")
   }
-
