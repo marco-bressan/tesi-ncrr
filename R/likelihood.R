@@ -1,7 +1,7 @@
 ##' Verosimiglianza per un singolo studio per NCRR __con baseline__.
 ##' --VERSIONE PRELIMINARE--
 ##'
-##' @title
+##' @title Verosimiglianza NCRR
 ##' @param params vettore dei parametri contenuti in un unico vettore; in ordine: alfa_0j, beta_0j, mu0, sigma^2_0, rho, sigma^2_{0j}.
 ##' @param y vettore dei vartheta
 ##' @param Gamma matrice Gamma

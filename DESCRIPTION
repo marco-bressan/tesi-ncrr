@@ -1,7 +1,7 @@
-Package: tesi-ncrr
-Title: Progetto di tesi sulla Network Control Risk Regression
+Package: tesi.ncrr
+Title: Progetto di Tesi sulla Network Control Risk Regression
 Version: 0.0.0.9000
-Authors@R: 
+Authors@R:
     person("Marco", "Bressan", "marco.bressan.12@studenti.unipd.it", role = c("aut", "cre"))
     person("Annamaria", "Guolo", "annamaria.guolo@unipd.it", role = c("aut"))
     person("Nicola", "Sartori", "nicola.sartori@unipd.it", role = c("aut"))
@@ -10,6 +10,9 @@ License: GPL (>= 3)
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.2
-Imports: 
+Imports:
     mvtnorm,
     nlme
+Depends:
+    R (>= 3.5)
+LazyData: true
