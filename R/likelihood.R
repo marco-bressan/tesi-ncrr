@@ -32,33 +32,62 @@ llik1 <- function(params, y, Gamma, design = c(0, 1)) {
   return(ll)
 }
 
+##' Effettua una sostituzione nella lista dei parametri di una NCRR
+##'
+##'
+##' @title Sostituisci parametri
+##' @param params Lista o vettore dei parametri
+##' @param subst Lista o vettore delle sostituzioni.
+##' La sostituzione avviene in base al nome, che dunque è obbligatorio per
+##' ogni parametro e deve essere uno fra
+##' @return `params` opportunamente modificato
+##' @author Marco Bressan
+subst.params <- function(params, subst) {
+  for (p in names(subst)) {
+    if (length(params[[p]]) != length(subst[[p]])) {
+      "Parametro %s fissato: sono stati forniti %i valori, ma ne sono richiesti %i" |>
+        sprintf(p, length(subst[[p]]), length(params[[p]])) |>
+        stop()
+    }
+    params[[p]] <- subst[[p]]
+  }
+  return(params)
+}
+
+
 ##' Funzione per il calcolo della verosimiglianza per NCRR.
 ##'
 ##' @param object oggetto che definisce il design
 ##' @return una funzione con parametro come `llik1`
 ##' @export
-get.llik.from.design <- function(object) {
+get.llik.from.design <- function(object, transform = TRUE, echo = 0) {
   np <- length(tt <- unique(do.call(c, object$design)))
-  function(params, y = object$theta, Gamma = crr.get.Gamma(object)) {
-    params <- crr.split.par(params, np - 1)
-    mu <- rep(NA, np + 1)
-    Sigma <- matrix(NA, np + 1, np + 1)
-    ll <- with(params, {
-      mvtnorm::dmvnorm(
-        y, mean = mu <<- crr.get.mu(object, alpha, beta, mu0),
-        sigma = Sigma <<- crr.get.sigma(object, beta, sigma20, sigma2, rho) + Gamma,
-        log = TRUE)
-    })
+  function(params, y = object$theta, Gamma = crr.get.Gamma(object),
+           fixed = NULL) {
+    params <- subst.params(crr.split.par(params, np - 1), fixed)
+
+    mu <- do.call(crr.get.mu, append(list(object), params[c("alpha", "beta", "mu0")]))
+    Sigma <- do.call(crr.get.sigma,
+                     append(list(object),
+                            params[c("beta", "sigma20", "sigma2", "rho")])) + Gamma
+    ll <- mvtnorm::dmvnorm(y, mean = mu, sigma = Sigma, log = TRUE)
+
     #browser()
-    cat("PARAMS: ")
-    with(params, {
-      lapply(list(alpha, beta, mu0, sigma20, rho, sigma2), \(x) deparse1(round(x, 6))) |>
-        append(x = list(fmt = "alpha = %s, beta = %s, \n\tmu0 = %s, sigma20 = %s, rho = %s, \n\tsigma2 = %s"), values = _) |>
-        do.call(sprintf, args = _) |>
-        cat("\nVALUE: ", ll, "\n\n")
-      print(list(marginal_mu = mu, marginal_tildeSigma = Sigma))
-      cat("\n=====================================\n")
-    })
+    if (echo > 0) {
+      cat("CURRENT VALUE: ", ll, "\n")
+      if (echo > 1) {
+        cat("PARAMS: ")
+        with(params, {
+          lapply(list(alpha, beta, mu0, sigma20, rho, sigma2), \(x) deparse1(round(x, 6))) |>
+            append(x = list(fmt = "alpha = %s, beta = %s, \n\tmu0 = %s, sigma20 = %s, rho = %s, \n\tsigma2 = %s"), values = _) |>
+            do.call(sprintf, args = _) |>
+            cat("\n")
+          if (echo > 2)
+            print(list(marginal_mu = mu, marginal_tildeSigma = Sigma))
+          cat("=====================================\n")
+        })
+      }
+    }
     return(ll)
   }
 }

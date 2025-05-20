@@ -28,7 +28,7 @@ crr.vcov.within <- function(r, n) {
   diag(1 / r + 1 / (n + r))
 }
 
-crr.split.par <- function(params, np) {
+crr.split.par <- function(params, np, transform = FALSE) {
   params <- unname(params)
   alpha <- params[1:np]
   beta <- params[(1 + np):(2 * np)]
@@ -38,6 +38,43 @@ crr.split.par <- function(params, np) {
   sigma2 <- params[(2 * np + 4):length(params)]
   #print(as.list(environment()))
   stopifnot("`params` has wrong dimesion!" = length(sigma2) == np)
-  rm(np, params)
+  if (isTRUE(transform)) {
+    sigma20 <- exp(sigma20)
+    sigma2 <- exp(sigma2)
+    rho <- fisher.corr()$linkinv(rho)
+  }
+  rm(np, params, transform)
   return(as.list(environment()))
 }
+
+crr.join.par <- function(params, ..., transform = FALSE) {
+  pnames <- c("alpha", "beta", "mu0", "sigma20", "rho", "sigma2")
+  if (!missing(params)) {
+    stopifnot("alcuni nomi mancanti in `params`" = pnames %in% names(params))
+  } else {
+    if (any(!pnames %in% ...names()))
+      stop("Non tutti i parametri sono stati passati correttamente!")
+    params <- list(...)[pnames]
+  }
+  if (isTRUE(transform)) {
+    params[["sigma20"]] <- log(params[["sigma20"]])
+    params[["sigma2"]] <- log(params[["sigma2"]])
+    params[["rho"]] <- fisher.corr()$linkfun(params[["sigma20"]])
+  }
+  ret <- do.call(if (any(sapply(params, is.matrix))) cbind else c, params)
+  drop(ret)
+}
+
+fisher.corr <- function() {
+  list(
+    link = "pearson",
+    linkfun = function(mu) log(1 + mu) - log(1 - mu),
+    linkinv = function(eta) (exp(eta) - 1) / (exp(eta) + 1)
+  )
+}
+
+
+
+
+
+

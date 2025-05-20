@@ -62,15 +62,31 @@ subset.ncrr.design <- function(x, subset, ...) {
 crr.get.sigma <- function(design, ...) {
   dd <- design$design
   stopifnot("Baseline != 0 ancora da implementare!" = sapply(dd, \(d) d[1] == 0))
-  Sigma <- blockdiag(lapply(dd, \(d) crr.vcov.baseline0(..., design = d)))
-  Sigma
+  dunique <- unique(dd)
+  #browser()
+  Sigmal <- lapply(dunique, \(d) {
+    psel <- par.select.multi(d, ...)
+    psel[["design"]] <- d
+    do.call(crr.vcov.baseline0, psel)
+  })
+  blockdiag(Sigmal[match(dd, dunique)])
 }
 
 crr.get.mu <- function(design, ...) {
   dd <- design$design
   stopifnot("Baseline != 0 ancora da implementare!" = sapply(dd, \(d) d[1] == 0))
-  mu <- do.call(c, lapply(dd, \(d) crr.mean.baseline0(..., design = d)))
-  mu
+  dunique <- unique(dd)
+  #browser()
+  mu <- lapply(dunique, \(d) {
+    psel <- par.select.multi(d, ...)
+    psel[["design"]] <- d
+    do.call(crr.mean.baseline0, psel)
+  })
+  do.call(c, mu[match(dd, dunique)])
+}
+
+par.select.multi <- function(design, ...) {
+  lapply(list(...), \(x) if (length(x) == 1) x else x[setdiff(design, 0)])
 }
 
 crr.get.Gamma <- function(design, ...) {
@@ -85,20 +101,69 @@ crr.get.Gamma <- function(design, ...) {
 #' @param data Non usato
 #' @param ... Non usati
 #' @param eps Tolleranza numerica per lo 0
+#' @param seed Seme per la generazione di un punto di partenza casuale (se NA non
+#' genera valori casuali). Può essere un vettore con alcuni o tutti i nomi
+#' dei parametri `c(alpha, beta, mu0, sigma20, rho, sigma2)`
+#' per specificare quali inizializzare casualmente e quali no.
 #'
-getInitial.ncrr.design <- function(object, data, ..., eps = 1e-10) {
+getInitial.ncrr.design <- function(object, data, ..., eps = 1e-10, seed = NA,
+                                   rep = 1, transform = TRUE) {
   if (!missing(data)) .NotYetUsed("data", error = FALSE)
-  nd <- length(unique(do.call(c, object$design)))
-  structure(c(alpha = rep(0, nd - 1),
-              beta = rep(1, nd - 1),
-              mu0 = 0, sigma20 = 1, rho = 0,
-              sigma = rep(1, nd - 1)),
-            lower = c(alpha = rep(-Inf, nd - 1),
-                      beta = rep(-Inf, nd - 1),
-                      mu0 = -Inf, sigma20 = eps, rho = -1,
-                      sigma = rep(eps, nd - 1)),
-            upper = c(alpha = rep(Inf, nd - 1),
-                      beta = rep(Inf, nd - 1),
-                      mu0 = Inf, sigma20 = Inf, rho = 1,
-                      sigma = rep(Inf, nd - 1)))
+  dd <- object$design
+  nd <- length(unique(do.call(c, dd)))
+  init <- list(alpha = rep(0, nd - 1),
+               beta = rep(1, nd - 1),
+               mu0 = 0, sigma20 = 1 - isTRUE(transform), rho = 0,
+               sigma2 = rep(1 - isTRUE(transform), nd - 1))
+  #browser()
+  if (any(!is.na(seed))){
+    #TODO: al momento rho è fuori scala. per semplicità si può operare sul logit e log per la varianza
+    if (!is.null(names(seed))) {
+      seed.old <- seed
+      seed <- rep(NA_real_, length(init))
+      names(seed) <- names(init)
+      seed[names(seed.old)] <- seed.old
+    } else if (length(seed) == 1) {
+      set.seed(seed)
+      seed <- rpois(length(init), 400)
+    }
+    noNAseed <- which(!is.na(seed))
+    #TODO: aggiungere switch per parametri univariati tipo mu e rho
+    init[noNAseed] <- mapply(
+      \(s, nm, is.var.term) {
+        if (is.na(s)) return(rep(NA, length))
+        if (length(seed) > 1) set.seed(s)
+        dd <- rnorm(rep * (nd - 1), 0, 4)
+        if (!isTRUE(transform) && is.var.term)
+          dd <- dd^2/4
+        if (nm %in% c("mu0", "sigma20", "rho"))
+          return(dd[1:rep])
+        M <- matrix(dd, rep, nd - 1)
+        colnames(M) <- paste0(nm, if (nd > 2) seq_len(ncol(M)) else "")
+        M
+      },
+      seed[noNAseed],
+      names(init)[noNAseed],
+      grepl("sigma", names(init)[noNAseed], fixed = TRUE),
+      SIMPLIFY = FALSE
+    )
+
+    #browser()
+    init <- drop(do.call(cbind, init))
+  } else {
+    init <- do.call(c, init)
+  }
+  structure(init,
+            lower = if (!isTRUE(transform)) {
+              c(alpha = rep(-Inf, nd - 1),
+                beta = rep(-Inf, nd - 1),
+                mu0 = -Inf, sigma20 = eps, rho = -1,
+                sigma2 = rep(eps, nd - 1))
+            },
+            upper = if (!isTRUE(transform)) {
+              c(alpha = rep(Inf, nd - 1),
+                beta = rep(Inf, nd - 1),
+                mu0 = Inf, sigma20 = Inf, rho = 1,
+                sigma2 = rep(Inf, nd - 1))
+            })
 }
