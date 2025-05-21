@@ -59,8 +59,8 @@ subset.ncrr.design <- function(x, subset, ...) {
   return(x)
 }
 
-crr.get.sigma <- function(design, ...) {
-  dd <- design$design
+crr.get.sigma <- function(object, ..., raw = FALSE) {
+  dd <- object$design
   stopifnot("Baseline != 0 ancora da implementare!" = sapply(dd, \(d) d[1] == 0))
   dunique <- unique(dd)
   #browser()
@@ -69,28 +69,46 @@ crr.get.sigma <- function(design, ...) {
     psel[["design"]] <- d
     do.call(crr.vcov.baseline0, psel)
   })
+  if (raw)
+    return(Sigmal[match(dd, dunique)])
   blockdiag(Sigmal[match(dd, dunique)])
 }
 
-crr.get.mu <- function(design, ...) {
-  dd <- design$design
+crr.get.mu <- function(object, ..., raw = FALSE) {
+  dd <- object$design
   stopifnot("Baseline != 0 ancora da implementare!" = sapply(dd, \(d) d[1] == 0))
   dunique <- unique(dd)
   #browser()
-  mu <- lapply(dunique, \(d) {
+  mul <- lapply(dunique, \(d) {
     psel <- par.select.multi(d, ...)
     psel[["design"]] <- d
     do.call(crr.mean.baseline0, psel)
   })
-  do.call(c, mu[match(dd, dunique)])
+  if (raw)
+    return(mul[match(dd, dunique)])
+  do.call(c, mul[match(dd, dunique)])
 }
 
-par.select.multi <- function(design, ...) {
-  lapply(list(...), \(x) if (length(x) == 1) x else x[setdiff(design, 0)])
+par.select.multi <- function(object, ...) {
+  lapply(list(...), \(x) if (length(x) == 1) x else x[setdiff(object, 0)])
 }
 
-crr.get.Gamma <- function(design, ...) {
-  diag(design$gamma)
+crr.get.Gamma <- function(object, ..., raw = FALSE) {
+  if (!raw)
+    return(diag(object$gamma))
+  lc <- cumsum(ll <- lengths(object$design))
+  lc <- c(0, lc[-length(lc)])
+  mapply(\(pos, len) diag(object$gamma[(pos + 1):(pos + len)]),
+         lc, ll, SIMPLIFY = FALSE)
+}
+
+crr.get.theta <- function(object, ..., raw = FALSE) {
+  if (!raw)
+    return(object$theta)
+  lc <- cumsum(ll <- lengths(object$design))
+  lc <- c(0, lc[-length(lc)])
+  mapply(\(pos, len) object$theta[(pos + 1):(pos + len)],
+         lc, ll, SIMPLIFY = FALSE)
 }
 
 #' Parametri iniziali per l'ottimizzatore della verosimiglianza NCRR

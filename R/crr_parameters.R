@@ -29,15 +29,27 @@ crr.vcov.within <- function(r, n) {
 }
 
 crr.split.par <- function(params, np, transform = FALSE) {
-  params <- unname(params)
-  alpha <- params[1:np]
-  beta <- params[(1 + np):(2 * np)]
-  mu0 <- params[2 * np + 1]
-  sigma20 <- params[2 * np + 2]
-  rho <- params[2 * np + 3]
-  sigma2 <- params[(2 * np + 4):length(params)]
+  if (is.matrix(params)) {
+    alpha <- params[, 1:np]
+    beta <- params[, (1 + np):(2 * np)]
+    mu0 <- params[, 2 * np + 1]
+    sigma20 <- params[, 2 * np + 2]
+    rho <- params[, 2 * np + 3]
+    sigma2 <- params[, (2 * np + 4):ncol(params)]
+    stopifnot("`params` has wrong dimesion!" = ncol(sigma2) == np)
+  } else {
+    params <- unname(params)
+    alpha <- params[1:np]
+    beta <- params[(1 + np):(2 * np)]
+    mu0 <- params[2 * np + 1]
+    sigma20 <- params[2 * np + 2]
+    rho <- params[2 * np + 3]
+    sigma2 <- params[(2 * np + 4):length(params)]
+    stopifnot("`params` has wrong dimesion!" = length(sigma2) == np)
+  }
+
   #print(as.list(environment()))
-  stopifnot("`params` has wrong dimesion!" = length(sigma2) == np)
+
   if (isTRUE(transform)) {
     sigma20 <- exp(sigma20)
     sigma2 <- exp(sigma2)
@@ -72,9 +84,3 @@ fisher.corr <- function() {
     linkinv = function(eta) (exp(eta) - 1) / (exp(eta) + 1)
   )
 }
-
-
-
-
-
-

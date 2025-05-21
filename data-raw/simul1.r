@@ -22,6 +22,7 @@ ls()
 smoking$tik <- with(smoking, log(rik) - log(nik - rik))
 names(smoking)
 
+# specifico il design della meta-analisi
 des <- ncrr.design(smoking)
 str(des)
 des
@@ -47,16 +48,20 @@ param.mv0 <- optim(c(0, 1, 0, 1, 0, 1), \(x) -llik1(x, theta.oss, Gamma),
 param.mv0
 
 
-#' # Riproduzione di esempi giocattolo contenuti nel documento `verosim1`
+#' # Riproduzione degli esempi giocattolo contenuti nel documento `verosim1.pdf`
 #'
 #' ## Due studi con design {0; 1} e {0; 2}
 #'
 
+# definisco il design `toy1` prendendo gli studi n. 4 e 6, che hanno design
+# diversi, compatibili con l'esempio giocattolo
 toy1 <- subset(des, c(4, 6))
 str(toy1)
 init1 <- getInitial(toy1, transform = FALSE)
+# invoco la funzione di ottimizzazione a partire dal design specificato
 fn1 <- get.llik.from.design(toy1, echo = 0, transform = FALSE)
 #| output: false
+# ottimizzazione vincolata
 mv1 <- optim(init1, \(x) -fn1(x),
              lower = attr(init1, "lower"),
              upper = attr(init1, "upper"),
@@ -66,22 +71,26 @@ mv1 <- optim(init1, \(x) -fn1(x),
 
 #'
 #'
-#' $\sigma2_{01}$ e $\sigma2_{02}$ invece risultano negativi!!
+#' $\sigma^2_{01}$ e $\sigma^2_{02}$ invece risultano negativi!!
 #'
 
+# controllo l'esito dell'ottimizzazione
 source("diff_alpha1.R")
 with(mv1, cat("Esito: ", convergence, " - ",
               if (is.null(message)) "OK" else message, "\n"))
 
 
+# confronto i parametri calcolati con l'ottimizzatore...
 param1 <- crr.split.par(mv1$par, 2)
 param1
+
+# ...con quelli in forma chiusa
 alphahat <- do.call(alpha.cf1, append(param1[c("sigma2", "beta", "sigma20", "mu0")],
                                       list(design = toy1)))
-alphahat
+alphahat # alpha calcolato in forma chiusa
 sigmahat <- do.call(sigma.cf1, append(param1[c("beta", "sigma20", "mu0")],
                                       list(design = toy1)))
-sigmahat
+sigmahat # sigma2 calcolato in forma chiusa
 #'
 #' Effettivamente, però, la forma della derivata (che ho calcolato con Maxima)
 #' sembrerebbe essere proprio così
@@ -94,7 +103,7 @@ sigmahat
 #' \end{align*}
 #'
 #'
-#' ::: {.callout-warninig}
+#' ::: {.callout-tip}
 #'
 #' ## **C'è un'apparente contraddizione!**
 #'
@@ -114,10 +123,12 @@ sigmahat
 #' **Come si può agire in questo caso?**
 #' :::
 #'
-#' Si può provare a vedere se le stime cambiano fissando i parametri
+#' Provo a vedere se le stime cambiano fissando i parametri
 #'
 
+# fisso parametro alpha
 fixpar <- list(alpha = alphahat)
+# disabilito stampa dei passaggi intermedi con `echo = 0`
 fn1 <- get.llik.from.design(toy1, echo = 0, transform = FALSE)
 mv1f <- optim(init1, \(x) -fn1(x, fixed = fixpar),
               lower = attr(init1, "lower"),
@@ -125,9 +136,11 @@ mv1f <- optim(init1, \(x) -fn1(x, fixed = fixpar),
               method = "L-BFGS-B",
               control = list(fnscale = 1e-10, factr = 1, maxit = 1e6))
 
-
+# confronto tra i parametri da stima non vincolata e vincolata rispettivamente
 all.equal(crr.split.par(mv1$par, 2),
           subst.params(crr.split.par(mv1f$par, 2), fixpar))
+
+#' La differenza è comunque minima.
 
 c(valore_ottimo = (mv1$value),
   valore_ottimo_vincolato = mv1f$value,
@@ -138,6 +151,7 @@ c(valore_ottimo = (mv1$value),
 #' ## Due studi con design uguale {0; 1}
 #'
 
+# seleziono solo studi n. 4 e 5
 toy2 <- subset(des, c(4, 5))
 str(toy2)
 init2 <- getInitial(toy2, transform = FALSE)
@@ -152,15 +166,38 @@ mv2 <- optim(init2, \(x) -fn2(x),
 with(mv2, cat("Esito: ", convergence, " - ",
               if (is.null(message)) "OK" else message, "\n"))
 
-
+# i parametri ottimizzati in un formato più leggibile...
 param2 <- crr.split.par(mv2$par, 1)
 param2
-do.call(alpha.cf2, append(param2[c("sigma2", "beta", "sigma20", "mu0")],
-                          list(design = toy2)))
-do.call(sigma.cf2, append(param2[c("alpha", "beta", "sigma20", "mu0")],
-                          list(design = toy2)))
+
+# ... da confrontare con le stime analitiche:
+
+alphahat <- do.call(alpha.cf2, append(param2[c("sigma2", "beta", "sigma20", "mu0")],
+                                      list(design = toy2)))
+alphahat
+sigmahat <- do.call(sigma.cf2, append(param2[c("alpha", "beta", "sigma20", "mu0")],
+                                      list(design = toy2)))
+sigmahat
 
 #'
+#' Ottimizzazione vincolata
+#'
+fixpar <- list(alpha = alphahat)
+fn2 <- get.llik.from.design(toy2, echo = 0, transform = FALSE)
+mv2f <- optim(init2, \(x) -fn2(x, fixed = fixpar),
+              lower = attr(init2, "lower"),
+              upper = attr(init2, "upper"),
+              method = "L-BFGS-B",
+              control = list(fnscale = 1e-10, factr = 1, maxit = 1e6))
+
+# confronto i parametri
+all.equal(crr.split.par(mv2$par, 1),
+          subst.params(crr.split.par(mv2f$par, 1), fixpar))
+
+# confronto il valore ottenuto della funzione obiettivo
+c(valore_ottimo = (mv2$value),
+  valore_ottimo_vincolato = mv2f$value,
+  differenza = mv2$value - mv2f$value)
 
 
 #'
@@ -176,10 +213,12 @@ do.call(sigma.cf2, append(param2[c("alpha", "beta", "sigma20", "mu0")],
 #' (2 trattamenti a confronto, di cui uno è il baseline)
 #'
 
+# prendo tutti gli studi con design {0; 1}
 des1 <- subset(des, which(sapply(des$design, \(d) identical(c(0, 1), d))))
 str(des1)
 par.init <- getInitial(des1, transform = FALSE)
 
+# calcolo esplicitamente i parametri della normale per hat(theta)
 # prova per i mu0
 do.call(crr.get.mu,
         append(list(des1),
@@ -200,23 +239,26 @@ param.mv1 <- optim(par.init, \(x) -opt.fn(x),
                   method = "L-BFGS-B",
                   control = list(fnscale = 1e-10, factr = 1, maxit = 1e6))
 
-param.explicit <- crr.split.par(param.mv1$par, 1, FALSE)
-# alfa esplicito: α_01=-(((t_10·β_01-t_11)·σ_0+(µ_0·β_01-t_11)·γ_10)/(σ_0+γ_10))
+# Stime MV in formato leggibile
+crr.split.par(param.mv1$par, 1, FALSE)
 
-with(param.explicit,
-     -((des1$theta[1] * beta - des1$theta[2]) * sigma20 +
-       (mu0 * beta - des1$theta[2]) * des1$gamma[1]) / (sigma20 + des1$gamma[1]))
+#'
+#' -------
+#'
+#'
+#' Ottimizzazione sulle trasformate dei parametri (log per la varianza, Fisher
+#' per la correlazione)
+#'
 
-
-opt.fn <- get.llik.from.design(des1, echo = 3, transform = TRUE)
 #| output: false
+opt.fn <- get.llik.from.design(des1, echo = 3, transform = TRUE)
 param.mv12 <- optim(getInitial(des1, transform = TRUE), \(x) -opt.fn(x),
                     method = "Nelder-Mead",
                     control = list(fnscale = 1e-10, factr = 1, maxit = 1e6))
 #| output: true
 param.mv12
 #'
-#' con random start
+#' Ottimizzazione con random start
 #'
 environment(opt.fn)$echo <- 0
 
@@ -229,10 +271,10 @@ for (i in 1:nrow(par2)) {
   print(mvcurr$counts)
   par2[i, ] <- mvcurr$par
 }
-# controllo
-apply(par2, 1, \(x) crr.split.par(x, transform = TRUE, np = 1)$sigma20)
-apply(par2, 1, \(x) crr.split.par(x, transform = TRUE, np = 1)$rho) # stime erratiche perchè non compare!
 
+# stampa di tutti i valori di sigma2_0 ottimizzati
+apply(par2, 1, \(x) crr.split.par(x, transform = TRUE, np = 1)$sigma20)
+#apply(par2, 1, \(x) crr.split.par(x, transform = TRUE, np = 1)$rho)
 
 #'
 #' -----
@@ -245,6 +287,8 @@ apply(par2, 1, \(x) crr.split.par(x, transform = TRUE, np = 1)$rho) # stime erra
 
 des2 <- subset(des, c(1, 3:4, 6:8))
 par.init <- getInitial(des2, transform = TRUE)
+
+# calcoli dei parametri della normale per hat(theta)
 # prova per i mu0
 do.call(crr.get.mu,
         append(list(des2),
@@ -260,14 +304,17 @@ do.call(crr.get.sigma,
 #'
 
 opt.fn <- get.llik.from.design(des2, echo = 0, transform = TRUE)
+
 #| output: false
 param.mv2 <- optim(par.init, \(x) -opt.fn(x),
-                  #lower = attr(par.init, "lower"),
-                  #upper = attr(par.init, "upper"),
-                  method = "Nelder-Mead",
-                  control = list(fnscale = 1e-10, factr = 1, maxit = 1e6))
+                   #lower = attr(par.init, "lower"),
+                   #upper = attr(par.init, "upper"),
+                   method = "Nelder-Mead",
+                   control = list(fnscale = 1e-10, factr = 1, maxit = 1e6))
 #| output: true
+# stime MV in formato leggibile
 crr.split.par(param.mv2$par, 3, TRUE)
+
 #'
 #'
 #' ::: {.callout-tip}
@@ -278,8 +325,64 @@ crr.split.par(param.mv2$par, 3, TRUE)
 #' dei parametri, giusto?
 #' :::
 #'
+#' Provo anche con il Simulated Annealing, come alternativa lenta ma che dovrebbe
+#' fornire un risultato più robusto, non avendo a disposizione le derivate esplicite.
 #'
 #'
+
+#| output: false
+#| eval: false
+sann.mv2 <- optim(par.init, \(x) -opt.fn(x),
+                  #lower = attr(par.init, "lower"),
+                  #upper = attr(par.init, "upper"),
+                  method = "SANN",
+                  control = list(fnscale = 1e-10, factr = 1, maxit = 1e6,
+                                 temp = 10, tmax = 10, trace = 1))
+save(sann.mv2, file = "sann_optim.rda")
+
+#' Diagnostiche di confronto tra Nelder-mead e Simulated Annealing
+#'
+
+load("../sann_optim.rda")
+
+# confronto dei parametri
+all.equal(crr.split.par(param.mv2$par, 3, TRUE),
+          crr.split.par(sann.mv2$par, 3, TRUE))
+
+# confronto dei valori della f.o.
+c(valore_ottimo_NELMEAD = (param.mv2$value),
+  valore_ottimo_SANN = sann.mv2$value,
+  differenza = param.mv2$value - sann.mv2$value)
+
+#'
+#' Facendolo invece partire dall'ottimo individuato da Nelder-Mead:
+#'
+#| eval: false
+sann.mv22 <- optim(param.mv2$par, \(x) -opt.fn(x),
+                   #lower = attr(par.init, "lower"),
+                   #upper = attr(par.init, "upper"),
+                   method = "SANN",
+                   control = list(fnscale = 1e-10, factr = 1, maxit = 1e6,
+                                  temp = 10, tmax = 10, trace = 1))
+save(sann.mv22, file = "sann_optim2.rda")
+
+#' Confronti
+
+load("../sann_optim2.rda")
+
+# confronto dei parametri
+all.equal(crr.split.par(param.mv2$par, 3, TRUE),
+          crr.split.par(sann.mv22$par, 3, TRUE))
+
+# confronto valori della f.o.
+c(valore_ottimo_NELMEAD = (param.mv2$value),
+  valore_ottimo_SANN = sann.mv22$value,
+  differenza = param.mv2$value - sann.mv22$value)
+
+#'
+#' Nelder-Mead con punti di partenza casuali
+#'
+
 #| output: false
 par22 <- getInitial(des2, seed = c(alpha = 3, beta = 4, sigma20 = 6, sigma2 = 9),
                    rep = 50, transform = TRUE)
@@ -287,9 +390,19 @@ for (i in 1:nrow(par22)) {
   mvcurr <- optim(par22[i, ], \(x) -opt.fn(x),
                   method = "Nelder-Mead",
                   control = list(fnscale = 1e-10, factr = 1, maxit = 1e6))
-  cat("Random start:", i, "; n. iter:", mvcurr$counts[1], "\n")
+  message("Random start: ", i, "; n. iter: ", mvcurr$counts[1])
   par22[i, ] <- mvcurr$par
 }
 
 #| output: true
-par22
+# per ogni random start calcolo alcune statistiche delle stime MV ottenute
+# (sui parametri ritrasformati in scala originale)
+crr.split.par(par22, 3, transform = TRUE) |>
+  do.call(cbind, args = _) |>
+  apply(2, \(x) c(min = min(x), max = max(x), mediana = median(x),
+                  media = mean(x), dev.std = sd(x),
+                  scarto.medio.assoluto.mediana = mean(abs(x - median(x))))) |>
+  t() |>
+  as.data.frame()
+
+#' non un grande risultato...

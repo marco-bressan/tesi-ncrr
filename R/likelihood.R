@@ -62,30 +62,38 @@ subst.params <- function(params, subst) {
 ##' @export
 get.llik.from.design <- function(object, transform = TRUE, echo = 0) {
   np <- length(tt <- unique(do.call(c, object$design)))
-  function(params, y = object$theta, Gamma = crr.get.Gamma(object),
+  function(params, y = crr.get.theta(object, raw = TRUE),
+           Gamma = crr.get.Gamma(object, raw = TRUE),
            fixed = NULL) {
-    params <- subst.params(crr.split.par(params, np - 1), fixed)
+    params <- subst.params(crr.split.par(params, np - 1, transform = transform), fixed)
 
-    mu <- do.call(crr.get.mu, append(list(object), params[c("alpha", "beta", "mu0")]))
+    mu <- do.call(crr.get.mu,
+                  append(list(object = object, raw = TRUE),
+                         params[c("alpha", "beta", "mu0")]))
     Sigma <- do.call(crr.get.sigma,
-                     append(list(object),
-                            params[c("beta", "sigma20", "sigma2", "rho")])) + Gamma
-    ll <- mvtnorm::dmvnorm(y, mean = mu, sigma = Sigma, log = TRUE)
+                     append(list(object = object, raw = TRUE),
+                            params[c("beta", "sigma20", "sigma2", "rho")]))
+    ll <- sum(mapply(\(t, m, s, g) mvtnorm::dmvnorm(t, mean = m, sigma = s + g,
+                                                    log = TRUE),
+                     y, mu, Sigma, Gamma))
 
-    #browser()
     if (echo > 0) {
       cat("CURRENT VALUE: ", ll, "\n")
       if (echo > 1) {
         cat("PARAMS: ")
         with(params, {
-          lapply(list(alpha, beta, mu0, sigma20, rho, sigma2), \(x) deparse1(round(x, 6))) |>
-            append(x = list(fmt = "alpha = %s, beta = %s, \n\tmu0 = %s, sigma20 = %s, rho = %s, \n\tsigma2 = %s"), values = _) |>
+          lapply(list(alpha, beta, mu0, sigma20, rho, sigma2),
+                 \(x) deparse1(round(x, 6))) |>
+            append(x = list(fmt = paste("alpha = %s, beta = %s,",
+                                        "\tmu0 = %s, sigma20 = %s, rho = %s,",
+                                        "\tsigma2 = %s", sep = "\n")), values = _) |>
             do.call(sprintf, args = _) |>
             cat("\n")
-          if (echo > 2)
-            print(list(marginal_mu = mu, marginal_tildeSigma = Sigma))
-          cat("=====================================\n")
         })
+        if (echo > 2)
+          print(list(marginal_mu = do.call(c, mu),
+                     marginal_tildeSigma = blockdiag(Sigma) + blockdiag(Gamma)))
+        cat("=====================================\n")
       }
     }
     return(ll)
