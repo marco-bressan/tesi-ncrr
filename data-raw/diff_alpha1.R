@@ -27,23 +27,6 @@ sigma.cf1 <- function(beta, mu0, sigma20, design) {
   ))
 }
 
-get.matrix.from.design <- function(object, what = c("theta", "gamma")) {
-  what <- match.arg(what, several.ok = FALSE)
-  stopifnot("passato oggetto non valido" = length(ll <- lengths(object$design)) > 0,
-            "alcuni design sono nulli" = ll != 0)
-  maxd <- max(unlist(object$design))
-  mm <- matrix(NA, maxd + 1, length(object$design))
-  for (i in seq_along(ll)) {
-    mm[object$design[[i]] + 1, i] <- 1
-  }
-  stopifnot("lunghezza di `what` non compatibile" =
-              sum(mm, na.rm = TRUE) == length(object[[what]]))
-  mm[!is.na(mm)] <- object[[what]]
-  t(mm)
-}
-
-
-
 # studi con lo stesso design
 
 alpha.cf2 <-  function(beta, mu0, sigma20, sigma2, design) {

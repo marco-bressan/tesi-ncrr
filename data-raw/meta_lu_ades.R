@@ -1,5 +1,5 @@
 ## code to prepare `meta_lu_ades` dataset goes here
-xx <- read.csv("data-raw/smoking_cessation.csv")
+xx <- read.csv("data-raw/csv/smoking_cessation.csv")
 smoking <- apply(xx, 1, \(x) {
   trt <- as.character(x[-(1:2)])
   ctrl <- rep(0, length(trt))
@@ -23,7 +23,7 @@ lvlnm <- c("No.contact..A." = "A - No contact",
 smoking$treatment <- stringr::str_replace_all(smoking$treatment, lvlnm) |>
   factor(levels = lvlnm)
 
-xx <- read.csv("data-raw/thrombolytic_drugs.csv")
+xx <- read.csv("data-raw/csv/thrombolytic_drugs.csv")
 thromb <- apply(xx, 1, \(x) {
   trt <- as.character(x[-(1:2)])
   ctrl <- rep(0, length(trt))
@@ -51,5 +51,29 @@ lvlnm <- c("SK..1." = "1 - SK",
 thromb$treatment <- stringr::str_replace_all(thromb$treatment, lvlnm) |>
   factor(levels = lvlnm)
 
+# smoke alarm data (achana et al. ex 1)
+
+yy <- read.csv("data-raw/csv/smoke_alarm", header = FALSE,
+               stringsAsFactors = FALSE)
+study <- yy[, 1]
+study.id <- seq_along(yy[, 1])
+trts <- do.call(rbind, strsplit(yy[, 2], " versus ", fixed = TRUE))
+adj.risk <- stringr::str_extract_all(yy[, 3], r"{\(([0-9.]+)\)}") #???
+raw.risk <- do.call(rbind, strsplit(gsub(r"{\( ?[0-9.]+\)}", "", yy[, 3]), "/| vs. "))
+
+smoke.alarm <- rbind(
+  data.frame(study.id = study.id, treatment = trts[, 1], is.baseline = 1,
+             rik = raw.risk[, 1], nik = raw.risk[, 2]),
+  data.frame(study.id = study.id, treatment = trts[, 2], is.baseline = 0,
+             rik = raw.risk[, 3], nik = raw.risk[, 4])
+)
+
+smoke.alarm$treatment <- relevel(factor(trimws(smoke.alarm$treatment)), "Usual care")
+smoke.alarm$rik <- as.numeric(smoke.alarm$rik)
+smoke.alarm$nik <- as.numeric(smoke.alarm$nik)
+
+smoke.alarm <- smoke.alarm[order(smoke.alarm$study.id), ]
+
 usethis::use_data(smoking, overwrite = TRUE)
 usethis::use_data(thromb, overwrite = TRUE)
+usethis::use_data(smoke.alarm, overwrite = TRUE)

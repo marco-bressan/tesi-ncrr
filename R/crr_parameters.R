@@ -9,19 +9,37 @@ crr.mean.baseline0 <- function(alpha, beta, mu0, design = c(0, 1)) {
 }
 
 # sigma2 vettore varianze di dim compatibile con beta
-crr.vcov.baseline0 <- function(beta, sigma20, sigma2, rho, design = c(0, 1)) {
+crr.vcov <- function(beta, sigma20, sigma2, rho, design = c(0, 1)) {
+  if (min(design) > 0) {
+    stop("Covarianza non implementata per design non baseline!")
+  }
   # minore matrice vcov ottenuto togliendo la prima riga e la prima colonna
-  vv1sigma2 <- rho * outer(sigma2, sigma2)
-  diag(vv1sigma2) <- 0
-  vv1 <- outer(beta, beta) * (sigma20 + vv1sigma2)
-  diag(vv1) <- diag(vv1) + sigma2
-  # costruzione output
-  vv <- matrix(NA, length(design), length(design))
-  vv[1, ] <- c(1, beta) * sigma20
-  vv[-1, 1] <- vv[1, -1]
-  vv[-1, -1] <- vv1
+  #if (length(beta) > 1 && all(c(beta, sigma20, sigma2) != 1)) browser()
+  sigma2 <- sqrt(sigma2)
+  if (any(!is.finite(sigma2))) stop("sigma2 negativo!")
+  vv <- tcrossprod(c(1, beta)) * sigma20
+  vv[-1, -1] <- vv[-1, -1] + tcrossprod(sigma2) *
+    (rho * (1 - diag(length(design) - 1)) + diag(length(design) - 1))
 
   vv
+}
+
+crr.vcov.simple <- function(beta, sigma20, rho, ..., design = c(0, 1)) {
+  ...not.used(...)
+  if (min(design) > 0) {
+    stop("Covarianza non implementata per design non baseline!")
+  }
+  vv <- tcrossprod(c(1, beta)) * sigma20
+  vv[-1, -1] <- vv[-1, -1] + sigma20 *
+    (rho * (1 - diag(length(design) - 1)) + diag(length(design) - 1))
+
+  vv
+}
+
+crr.vcov.achana <- function(sigma20, ..., design = c(0, 1)) {
+  ...not.used(...)
+  stopifnot(length(sigma20) == 1)
+  sigma20 * (diag(length(design)) + .5 * (1 - diag(length(design))))
 }
 
 crr.vcov.within <- function(r, n) {

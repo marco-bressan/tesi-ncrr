@@ -16,7 +16,7 @@ llik1 <- function(params, y, Gamma, design = c(0, 1)) {
   ll <- with(params, {
     mvtnorm::dmvnorm(
       y, mean = mu <<- crr.mean.baseline0(alpha, beta, mu0, design),
-      sigma = Sigma <<- crr.vcov.baseline0(beta, sigma20, sigma2, rho, design) + Gamma,
+      sigma = Sigma <<- crr.vcov(beta, sigma20, sigma2, rho, design) + Gamma,
       log = TRUE)
   })
   #browser()
@@ -32,46 +32,32 @@ llik1 <- function(params, y, Gamma, design = c(0, 1)) {
   return(ll)
 }
 
-##' Effettua una sostituzione nella lista dei parametri di una NCRR
-##'
-##'
-##' @title Sostituisci parametri
-##' @param params Lista o vettore dei parametri
-##' @param subst Lista o vettore delle sostituzioni.
-##' La sostituzione avviene in base al nome, che dunque è obbligatorio per
-##' ogni parametro e deve essere uno fra
-##' @return `params` opportunamente modificato
-##' @author Marco Bressan
-subst.params <- function(params, subst) {
-  for (p in names(subst)) {
-    if (length(params[[p]]) != length(subst[[p]])) {
-      "Parametro %s fissato: sono stati forniti %i valori, ma ne sono richiesti %i" |>
-        sprintf(p, length(subst[[p]]), length(params[[p]])) |>
-        stop()
-    }
-    params[[p]] <- subst[[p]]
-  }
-  return(params)
-}
-
-
 ##' Funzione per il calcolo della verosimiglianza per NCRR.
 ##'
 ##' @param object oggetto che definisce il design
 ##' @return una funzione con parametro come `llik1`
 ##' @export
-get.llik.from.design <- function(object, transform = TRUE, echo = 0) {
+get.llik.from.design <- function(object, transform = TRUE, echo = 0,
+                                 vcov.type = "normal") {
   np <- length(tt <- unique(do.call(c, object$design)))
+  fixed.default <- NULL
+  if (vcov.type %in% c("simplified", "achana")) {
+    fixed.default[["sigma2"]] <- rep(1, np - 1)
+  }
+  if (vcov.type == "achana") {
+    fixed.default[["rho"]] <- 0
+  }
+  # ritorna la funzione da ottimizzare
   function(params, y = crr.get.theta(object, raw = TRUE),
            Gamma = crr.get.Gamma(object, raw = TRUE),
-           fixed = NULL) {
+           fixed = fixed.default) {
     params <- subst.params(crr.split.par(params, np - 1, transform = transform), fixed)
 
     mu <- do.call(crr.get.mu,
                   append(list(object = object, raw = TRUE),
                          params[c("alpha", "beta", "mu0")]))
     Sigma <- do.call(crr.get.sigma,
-                     append(list(object = object, raw = TRUE),
+                     append(list(object = object, raw = TRUE, type = vcov.type),
                             params[c("beta", "sigma20", "sigma2", "rho")]))
     ll <- sum(mapply(\(t, m, s, g) mvtnorm::dmvnorm(t, mean = m, sigma = s + g,
                                                     log = TRUE),

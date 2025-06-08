@@ -59,15 +59,21 @@ subset.ncrr.design <- function(x, subset, ...) {
   return(x)
 }
 
-crr.get.sigma <- function(object, ..., raw = FALSE) {
+crr.get.sigma <- function(object, ..., raw = FALSE,
+                          type = c("normal", "simplified", "achana")) {
   dd <- object$design
+  type <- match.arg(type)
+  vcovfn <- switch(type,
+                   "normal" = crr.vcov,
+                   "simplified" = crr.vcov.simple,
+                   "achana" = crr.vcov.achana)
   stopifnot("Baseline != 0 ancora da implementare!" = sapply(dd, \(d) d[1] == 0))
   dunique <- unique(dd)
   #browser()
   Sigmal <- lapply(dunique, \(d) {
     psel <- par.select.multi(d, ...)
     psel[["design"]] <- d
-    do.call(crr.vcov.baseline0, psel)
+    do.call(vcovfn, psel)
   })
   if (raw)
     return(Sigmal[match(dd, dunique)])
@@ -110,6 +116,22 @@ crr.get.theta <- function(object, ..., raw = FALSE) {
   mapply(\(pos, len) object$theta[(pos + 1):(pos + len)],
          lc, ll, SIMPLIFY = FALSE)
 }
+
+get.matrix.from.design <- function(object, what = c("theta", "gamma")) {
+  what <- match.arg(what, several.ok = FALSE)
+  stopifnot("passato oggetto non valido" = length(ll <- lengths(object$design)) > 0,
+            "alcuni design sono nulli" = ll != 0)
+  maxd <- max(unlist(object$design))
+  mm <- matrix(NA, maxd + 1, length(object$design))
+  for (i in seq_along(ll)) {
+    mm[object$design[[i]] + 1, i] <- 1
+  }
+  stopifnot("lunghezza di `what` non compatibile" =
+              sum(mm, na.rm = TRUE) == length(object[[what]]))
+  mm[!is.na(mm)] <- object[[what]]
+  t(mm)
+}
+
 
 #' Parametri iniziali per l'ottimizzatore della verosimiglianza NCRR
 #'
