@@ -57,7 +57,7 @@ yy <- read.csv("data-raw/csv/smoke_alarm", header = FALSE,
                stringsAsFactors = FALSE)
 study <- yy[, 1]
 study.id <- seq_along(yy[, 1])
-trts <- do.call(rbind, strsplit(yy[, 2], " versus ", fixed = TRUE))
+trts <- tolower(do.call(rbind, strsplit(yy[, 2], " versus ", fixed = TRUE)))
 adj.risk <- stringr::str_extract_all(yy[, 3], r"{\(([0-9.]+)\)}") #???
 raw.risk <- do.call(rbind, strsplit(gsub(r"{\( ?[0-9.]+\)}", "", yy[, 3]), "/| vs. "))
 
@@ -68,12 +68,43 @@ smoke.alarm <- rbind(
              rik = raw.risk[, 3], nik = raw.risk[, 4])
 )
 
-smoke.alarm$treatment <- relevel(factor(trimws(smoke.alarm$treatment)), "Usual care")
+smoke.alarm$treatment <- relevel(factor(trimws(smoke.alarm$treatment)), "usual care")
 smoke.alarm$rik <- as.numeric(smoke.alarm$rik)
 smoke.alarm$nik <- as.numeric(smoke.alarm$nik)
 
 smoke.alarm <- smoke.alarm[order(smoke.alarm$study.id), ]
 
+
+# morphine (achana)
+yy <- read.csv("data-raw/csv/morphine.csv", header = TRUE,
+               stringsAsFactors = FALSE)
+study <- trimws(yy[, 1])
+study.id <- seq_along(yy[, 1])
+
+trts <- lapply(yy[, -1], \(x) {
+  ss <- strsplit(x, "/", fixed = TRUE)
+  l0 <- which(!lengths(ss))
+  ss[l0] <- rep(list(c(NA, NA, NA)), length(l0))
+  do.call(rbind, ss)
+})
+
+names(trts) <- NULL
+
+morphine <- mapply(\(x, nm) {
+  mode(x) <- "numeric"
+  colnames(x) <- c("nik", "mik", "sik")
+  data.frame(study.id = study.id, treatment = nm,
+             is.baseline = as.numeric(nm == "placebo"), x)
+}, trts, c("placebo", "paracetamol", "nsaid", "cox-2"), SIMPLIFY = FALSE) |>
+  do.call(what = rbind)
+
+naidx <- apply(morphine[, c("nik", "mik", "sik")], 1, \(x) all(is.na(x)))
+morphine <- morphine[-which(naidx), ]
+morphine <- morphine[order(morphine$study.id), ]
+morphine$treatment <- relevel(factor(morphine$treatment), ref = "placebo")
+
+
 usethis::use_data(smoking, overwrite = TRUE)
 usethis::use_data(thromb, overwrite = TRUE)
 usethis::use_data(smoke.alarm, overwrite = TRUE)
+usethis::use_data(morphine, overwrite = TRUE)

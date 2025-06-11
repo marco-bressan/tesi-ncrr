@@ -1,20 +1,24 @@
 #' Specifica il disegno della meta-analisi
 #'
-#' **NOTA:** al momento bisogna assicurarsi che il dataframe sia ordinato per studio
-#' e per trattamento, con il baseline in prima posizione
 #'
 #' @return lista con i dettagli dell'esperimento
 #'
-#' @param x un dataframe
-#' @param baseline livello baseline (di default il primo)
+#' @param x un dataframe. Se contenente le colonne $m_{ik}$ e $s_{ik}$, queste
+#'   vengono interpretate come medie e dev.std dello studio, che viene quindi
+#'   assunto ad outcome normale. In questo caso,
+#'   $\hat\Gamma=\text{diag}(s_{ik}^2)$ `x$treatment` dev'essere un fattore: il
+#'   primo livello sarà il _baseline_.
 #'
 #' @export
-ncrr.design <- function(x, baseline) {
+ncrr.design <- function(x) {
   treatments <- levels(x$treatment)
-  if (missing(baseline))
-    baseline <- treatments[1]
-  theta <- with(x, log(rik) - log(nik - rik))
-  gamma <- with(x, 1 / rik + 1 / (nik + rik))
+  if (all(c("mik", "sik") %in% colnames(x))) {# risposta normale
+    theta <- x$mik
+    gamma <- x$sik^2
+  } else {
+    theta <- with(x, log(rik) - log(nik - rik))
+    gamma <- with(x, 1 / rik + 1 / (nik + rik))
+  }
   design <- tapply(x$treatment, x$study.id, \(z) as.integer(z) - 1)
   if (any(sapply(design, \(d) d[1] != 0))) {
     warning("Alcuni studi non hanno baseline 0: le corrispondenti routine non sono al momento implementate!")
@@ -67,7 +71,7 @@ crr.get.sigma <- function(object, ..., raw = FALSE,
                    "normal" = crr.vcov,
                    "simplified" = crr.vcov.simple,
                    "achana" = crr.vcov.achana)
-  stopifnot("Baseline != 0 ancora da implementare!" = sapply(dd, \(d) d[1] == 0))
+  #stopifnot("Baseline != 0 ancora da implementare!" = sapply(dd, \(d) d[1] == 0))
   dunique <- unique(dd)
   #browser()
   Sigmal <- lapply(dunique, \(d) {
@@ -82,10 +86,11 @@ crr.get.sigma <- function(object, ..., raw = FALSE,
 
 crr.get.mu <- function(object, ..., raw = FALSE) {
   dd <- object$design
-  stopifnot("Baseline != 0 ancora da implementare!" = sapply(dd, \(d) d[1] == 0))
+  #stopifnot("Baseline != 0 ancora da implementare!" = sapply(dd, \(d) d[1] == 0))
   dunique <- unique(dd)
   #browser()
   mul <- lapply(dunique, \(d) {
+    #if (!0 %in% d) browser()
     psel <- par.select.multi(d, ...)
     psel[["design"]] <- d
     do.call(crr.mean.baseline0, psel)
@@ -117,6 +122,16 @@ crr.get.theta <- function(object, ..., raw = FALSE) {
          lc, ll, SIMPLIFY = FALSE)
 }
 
+##' L'uso della presente è confinato alle funzioni che calcolano i
+##' parametri esplicitamente, contenute nella dir `data-raw/`
+##'
+##' @title Ottieni matrici dal design
+##' @param object design di uno studio ncrr
+##' @param what al momento solo "theta" o "gamma"
+##' @return matrice di interesse (quella dei gamma o dei theta) in un
+##'   formato che sia compatibile con la notazione usata in maxima nel calcolo
+##'   delle derivate esplicite.
+##' @author Marco Bressan
 get.matrix.from.design <- function(object, what = c("theta", "gamma")) {
   what <- match.arg(what, several.ok = FALSE)
   stopifnot("passato oggetto non valido" = length(ll <- lengths(object$design)) > 0,
@@ -137,26 +152,41 @@ get.matrix.from.design <- function(object, what = c("theta", "gamma")) {
 #'
 #' @export
 #' @method getInitial ncrr.design
-#' @param object Oggetto di tipo `ncrr.design`
-#' @param data Non usato
-#' @param ... Non usati
-#' @param eps Tolleranza numerica per lo 0
-#' @param seed Seme per la generazione di un punto di partenza casuale (se NA non
-#' genera valori casuali). Può essere un vettore con alcuni o tutti i nomi
-#' dei parametri `c(alpha, beta, mu0, sigma20, rho, sigma2)`
-#' per specificare quali inizializzare casualmente e quali no.
-#'
+##' @param object Oggetto di tipo `ncrr.design`
+##' @param data Non usato
+##' @param ... Non usati
+##' @param eps Tolleranza numerica per lo 0
+##' @param seed Seme per la generazione di un punto di partenza casuale. Se si
+##'   passa un singolo NA, il comportamento è completamente casuale e non
+##'   riproducibile. Può essere un vettore con nomi dei parametri `c(alpha,
+##'   beta, mu0, sigma20, rho, sigma2)`: per specificare quali NON
+##'   inizializzare casualmente, mettere NA.
+##' @param rep numero di random start
+##' @param transform applica le trasformazioni ai parametri?
+##' @param fixed elenco di nomi di parametri fissati (cioè esclusi dal vettore/matrice)
+##' @param vcov.type preimpostazioni sui parametri fixed
+##'
+##' @return un vettore o una matrice con i punti di partenza casuali (se rep>1)
 getInitial.ncrr.design <- function(object, data, ..., eps = 1e-10, seed = NA,
-                                   rep = 1, transform = TRUE) {
+                                   rep = 1, transform = TRUE,
+                                   fixed = NULL,
+                                   vcov.type = c("normal", "simplified", "achana")) {
+  vcov.type <- match.arg(vcov.type)
   if (!missing(data)) .NotYetUsed("data", error = FALSE)
   dd <- object$design
   nd <- length(unique(do.call(c, dd)))
-  init <- list(alpha = rep(0, nd - 1),
-               beta = rep(1, nd - 1),
-               mu0 = 0, sigma20 = 1 - isTRUE(transform), rho = 0,
-               sigma2 = rep(1 - isTRUE(transform), nd - 1))
+  fixed <- union(fixed, switch(vcov.type, simplified = "sigma2",
+                               achana = c("sigma2", "rho"),
+                               default = NULL))
+  parls <- crr.par.idx(nd - 1, fixed, lengths = TRUE)
+  init <- mapply(rep, list(alpha = 0,
+                           beta = 1,
+                           mu0 = 0, sigma20 = 1 - isTRUE(transform), rho = 0,
+                           sigma2 = 1 - isTRUE(transform))[names(parls)],
+                 parls,
+                 SIMPLIFY = FALSE)
   #browser()
-  if (any(!is.na(seed))){
+  if (rep > 1) {
     #TODO: al momento rho è fuori scala. per semplicità si può operare sul logit e log per la varianza
     if (!is.null(names(seed))) {
       seed.old <- seed
@@ -164,12 +194,14 @@ getInitial.ncrr.design <- function(object, data, ..., eps = 1e-10, seed = NA,
       names(seed) <- names(init)
       seed[names(seed.old)] <- seed.old
     } else if (length(seed) == 1) {
-      set.seed(seed)
+      if (!is.na(seed)) set.seed(seed)
       seed <- rpois(length(init), 400)
+      names(seed) <- names(init)
     }
     noNAseed <- which(!is.na(seed))
+    iidx <- match(names(noNAseed), names(init))
     #TODO: aggiungere switch per parametri univariati tipo mu e rho
-    init[noNAseed] <- mapply(
+    init[iidx] <- mapply(
       \(s, nm, is.var.term) {
         if (is.na(s)) return(rep(NA, length))
         if (length(seed) > 1) set.seed(s)
@@ -183,8 +215,8 @@ getInitial.ncrr.design <- function(object, data, ..., eps = 1e-10, seed = NA,
         M
       },
       seed[noNAseed],
-      names(init)[noNAseed],
-      grepl("sigma", names(init)[noNAseed], fixed = TRUE),
+      names(init)[iidx],
+      grepl("sigma", names(init)[iidx], fixed = TRUE),
       SIMPLIFY = FALSE
     )
 
@@ -193,17 +225,19 @@ getInitial.ncrr.design <- function(object, data, ..., eps = 1e-10, seed = NA,
   } else {
     init <- do.call(c, init)
   }
+  lower <- mapply(rep, list(alpha = -Inf, beta = -Inf,
+                            mu0 = -Inf, sigma20 = eps, rho = -1,
+                            sigma2 = eps)[names(parls)],
+                  parls)
+  upper <- mapply(rep, list(alpha = Inf, beta = Inf,
+                            mu0 = Inf, sigma20 = Inf, rho = 1,
+                            sigma2 = Inf)[names(parls)],
+                  parls)
+  if (!is.null(fixed)) {
+    lower <- lower[-match(names(fixed), names(lower))]
+    upper <- upper[-match(names(fixed), names(upper))]
+  }
   structure(init,
-            lower = if (!isTRUE(transform)) {
-              c(alpha = rep(-Inf, nd - 1),
-                beta = rep(-Inf, nd - 1),
-                mu0 = -Inf, sigma20 = eps, rho = -1,
-                sigma2 = rep(eps, nd - 1))
-            },
-            upper = if (!isTRUE(transform)) {
-              c(alpha = rep(Inf, nd - 1),
-                beta = rep(Inf, nd - 1),
-                mu0 = Inf, sigma20 = Inf, rho = 1,
-                sigma2 = rep(Inf, nd - 1))
-            })
+            lower = unlist(lower),
+            upper = unlist(upper))
 }

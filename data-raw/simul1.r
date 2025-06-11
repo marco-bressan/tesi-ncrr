@@ -15,7 +15,7 @@
 #' I dati sono gli stessi del primo esempio in Noma et al. sulla
 #' cessazione dell'abitudine al fumo tramite 3 diverse tipologie di
 #' assistenza.
-
+rm(list = ls())
 #| output: false
 devtools::load_all(".")
 
@@ -27,27 +27,6 @@ des <- ncrr.design(smoking)
 str(des)
 des
 
-#' # Prima prova
-#'
-#' codice "legacy" in cui provo un singolo studio (il 3 : A (baseline) vs. B)
-
-theta.oss <- smoking[smoking$study.id == 3, "tik"]
-Gamma <- crr.vcov.within(smoking[smoking$study.id == 3, "rik"],
-                         smoking[smoking$study.id == 3, "nik"])
-#| output: false
-param.mv0 <- optim(c(0, 1, 0, 1, 0, 1), \(x) -llik1(x, theta.oss, Gamma),
-                  lower = c(-Inf, -Inf, -Inf, 1e-10, -1, 1e-10),
-                  upper = c(Inf, Inf, Inf, Inf, 1, Inf),
-                  method = "L-BFGS-B",
-                  control = list(fnscale = 1e-10, factr = 1, maxit = 1e6))
-
-
-#' ottengo stime dei parametri sensate solo per i parametri di posizione, mentre
-#' le varianze e la correlazione si "incastrano su 0"
-
-param.mv0
-
-
 #' # Riproduzione degli esempi giocattolo contenuti nel documento `verosim1.pdf`
 #'
 #' ## Due studi con design {0; 1} e {0; 2}
@@ -56,10 +35,9 @@ param.mv0
 # definisco il design `toy1` prendendo gli studi n. 4 e 6, che hanno design
 # diversi, compatibili con l'esempio giocattolo
 toy1 <- subset(des, c(4, 6))
-str(toy1)
 init1 <- getInitial(toy1, transform = FALSE)
-# invoco la funzione di ottimizzazione a partire dal design specificato
-fn1 <- get.llik.from.design(toy1, echo = 0, transform = FALSE)
+# creo la funzione di ottimizzazione a partire dal design specificato
+fn1 <- get.llik.from.design(toy1, echo = 3, transform = FALSE)
 #| output: false
 # ottimizzazione vincolata
 mv1 <- optim(init1, \(x) -fn1(x),
@@ -129,22 +107,44 @@ sigmahat # sigma2 calcolato in forma chiusa
 fixpar <- list(alpha = alphahat)
 # disabilito stampa dei passaggi intermedi con `echo = 0`
 fn1 <- get.llik.from.design(toy1, echo = 0, transform = FALSE)
-mv1f <- optim(init1, \(x) -fn1(x, fixed = fixpar),
-              lower = attr(init1, "lower"),
-              upper = attr(init1, "upper"),
+# occhio che ogni volta bisogna fare in modo di togliere i parametri fissati!
+mv1f <- optim(crr.remove.par(init1, names(fixpar)), \(x) -fn1(x, fixed = fixpar),
+              lower = crr.remove.par(attr(init1, "lower"), names(fixpar)),
+              upper = crr.remove.par(attr(init1, "upper"), names(fixpar)),
               method = "L-BFGS-B",
               control = list(fnscale = 1e-10, factr = 1, maxit = 1e6))
 
 # confronto tra i parametri da stima non vincolata e vincolata rispettivamente
 all.equal(crr.split.par(mv1$par, 2),
-          subst.params(crr.split.par(mv1f$par, 2), fixpar))
+          c(fixpar, crr.split.par(mv1f$par, 2)))
 
 #' La differenza è comunque minima.
 
 c(valore_ottimo = (mv1$value),
   valore_ottimo_vincolato = mv1f$value,
   differenza = mv1$value - mv1f$value)
+#'
+#' ### Proviamo con un problema semplificato (Achana et al.)
 
+fn1 <- get.llik.from.design(toy1, echo = Inf, transform = FALSE, vcov.type = "achana")
+mv1f <- optim(crr.remove.par(init1, c("sigma2", "rho")), \(x) -fn1(x),
+              lower = crr.remove.par(attr(init1, "lower"), c("sigma2", "rho")),
+              upper = crr.remove.par(attr(init1, "upper"), c("sigma2", "rho")),
+              method = "L-BFGS-B",
+              control = list(fnscale = 1e-10, factr = 1, maxit = 1e6))
+
+mv1f
+
+# inversa dell'hessiana (in II colonna i valori dei parametri)
+
+optimHess(mv1f$par, \(x) -fn1(x)) |>
+  solve() |>
+  diag() |>
+  sqrt() |>
+  cbind(mv1f$par)
+
+#'
+#'
 #'
 #'
 #' ## Due studi con design uguale {0; 1}
@@ -179,25 +179,29 @@ sigmahat <- do.call(sigma.cf2, append(param2[c("alpha", "beta", "sigma20", "mu0"
                                       list(design = toy2)))
 sigmahat
 
-#'
-#' Ottimizzazione vincolata
-#'
-fixpar <- list(alpha = alphahat)
-fn2 <- get.llik.from.design(toy2, echo = 0, transform = FALSE)
-mv2f <- optim(init2, \(x) -fn2(x, fixed = fixpar),
-              lower = attr(init2, "lower"),
-              upper = attr(init2, "upper"),
-              method = "L-BFGS-B",
-              control = list(fnscale = 1e-10, factr = 1, maxit = 1e6))
+## Al momento questo codice da' errore, devo capire perchè...
+## #'
+## #' Ottimizzazione vincolata
+## #'
+## fixpar <- list(alpha = alphahat)
+## fn2 <- get.llik.from.design(toy2, echo = 0, transform = FALSE)
+## mv2f <- optim(crr.remove.par(init2, "alpha"), \(x) -fn2(x, fixed = fixpar),
+##               lower = attr(init2, "lower"),
+##               upper = attr(init2, "upper"),
+##               method = "L-BFGS-B",
+##               control = list(fnscale = 1e-10, factr = 1, maxit = 1e6))
 
-# confronto i parametri
-all.equal(crr.split.par(mv2$par, 1),
-          subst.params(crr.split.par(mv2f$par, 1), fixpar))
+## # confronto i parametri
+## all.equal(crr.split.par(mv2$par, 1),
+##           c(fixpar, crr.split.par(mv2f$par, 1)))
 
-# confronto il valore ottenuto della funzione obiettivo
-c(valore_ottimo = (mv2$value),
-  valore_ottimo_vincolato = mv2f$value,
-  differenza = mv2$value - mv2f$value)
+## all.equal(crr.split.par(mv2$par, 1),
+##           subst.params(crr.split.par(mv2f$par, 1), fixpar))
+
+## # confronto il valore ottenuto della funzione obiettivo
+## c(valore_ottimo = (mv2$value),
+##   valore_ottimo_vincolato = mv2f$value,
+##   differenza = mv2$value - mv2f$value)
 
 
 #'
@@ -260,11 +264,29 @@ param.mv12 <- optim(getInitial(des1, transform = TRUE), \(x) -opt.fn(x),
                     control = list(fnscale = 1e-10, factr = 1, maxit = 1e6))
 #| output: true
 crr.split.par(param.mv12$par, 1, TRUE)
+hess.mv12 <- optimHess(param.mv12$par, \(x) -opt.fn(x))
+solve(hess.mv12[-5, ][, -5]) |> diag() |> sqrt()
+
+# con matrice di achana
+opt.fn <- get.llik.from.design(des1, echo = 3, transform = TRUE,
+                               vcov.type = "achana")
+param.mv12a <- optim(getInitial(des1, transform = TRUE, vcov.type = "achana"),
+                    \(x) -opt.fn(x),
+                    method = "Nelder-Mead",
+                    control = list(fnscale = 1e-10, factr = 1, maxit = 1e6))
+#| output: true
+crr.split.par(param.mv12$par, 1, TRUE)
+hess.mv12a <- optimHess(param.mv12a$par, \(x) -opt.fn(x))
+solve(hess.mv12a) |> diag() |> sqrt()
+
+
+
+
 #'
 #' Ottimizzazione con random start
 #'
-environment(opt.fn)$echo <- 0
-
+# levo l'output
+opt.fn <- get.llik.from.design(des1, echo = 0, transform = TRUE)
 par2 <- getInitial(des1, seed = c(alpha = 3, beta = 4, sigma20 = 6, sigma2 = 9),
                    rep = 50, transform = TRUE)
 for (i in 1:nrow(par2)) {
@@ -276,6 +298,7 @@ for (i in 1:nrow(par2)) {
 }
 
 # stampa di statistiche descrittive per tutti i valori ottimizzati
+crr.split.par(par2, transform = TRUE, np = 1)
 crr.split.par(par2, transform = TRUE, np = 1) |>
   do.call(cbind, args = _) |>
   apply(2, \(x) c(min = min(x), max = max(x), mediana = median(x),
@@ -367,7 +390,7 @@ crr.split.par(par2, transform = TRUE, np = 1)[c("mu0", "beta", "alpha", "sigma20
   t() |>
   as.data.frame()
 
-crr.split.par(par2[, c("mu0", "beta", "alpha", "sigma20")], transform = TRUE, np = 1) |>
+crr.split.par(par2, transform = TRUE, np = 1)[, c("mu0", "beta", "alpha", "sigma20")] |>
   do.call(cbind, args = _) |>
   apply(2, \(x) table(cut(x, breaks = 5)), simplify = FALSE)
 
@@ -418,13 +441,6 @@ crr.split.par(param.mv2$par, 3, TRUE)
 
 #'
 #'
-#' ::: {.callout-tip}
-#'
-#' ## **Integrazione delle derivate analitiche**
-#'
-#' Immagino che in questo caso la derivata debba tener conto della trasformazione
-#' dei parametri, giusto?
-#' :::
 #'
 #' Provo anche con il Simulated Annealing, come alternativa lenta ma che dovrebbe
 #' fornire un risultato più robusto, non avendo a disposizione le derivate esplicite.
