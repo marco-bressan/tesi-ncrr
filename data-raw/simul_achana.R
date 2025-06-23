@@ -37,10 +37,10 @@ des <- subset(des, which(sapply(des$design, \(x) 0 %in% x)))
 opt.fn <- get.llik.from.design(des, vcov.type = "achana")
 opt1 <- optim(getInitial(des, vcov.type = "achana"),
               \(x) -opt.fn(x), method = "BFGS")
-crr.split.par(opt1$par, 5, transform = TRUE)
+crr.split.par(opt1$par, 5, transform = TRUE, fixed = c("sigma2", "rho"))
 
 opt2 <- optim(opt1$par, \(x) -opt.fn(x), method = "Nelder-Mead")
-crr.split.par(opt2$par, 5, transform = TRUE)
+crr.split.par(opt2$par, 5, transform = TRUE, fixed = c("rho","sigma2"))
 
 #'
 #' Parametri (I colonna) con relativi s.e.
@@ -67,22 +67,20 @@ cbind(opt1$par[-13],
       opt2h[-13, ][, -13] |>
         solve() |>
         diag() |>
-        sqrt()
-      )
+        sqrt())
 
 opt.fn <- get.llik.from.design(des, vcov.type = "simplified")
 as.list(environment(opt.fn))
 opt1 <- optim(getInitial(des, vcov.type = "simplified"),
               \(x) -opt.fn(x), method = "BFGS")
-crr.split.par(opt1$par, 5, transform = TRUE)
+crr.split.par(opt1$par, 5, transform = TRUE, fixed = c("sigma2"))
 
 opt2h <- optimHess(opt1$par, \(x) -opt.fn(x))
 cbind(opt1$par[-13],
       opt2h[-13, ][, -13] |>
         solve() |>
         diag() |>
-        sqrt()
-      )
+        sqrt())
 
 
 
