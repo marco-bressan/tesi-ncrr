@@ -7,13 +7,15 @@
 llik1(params, y, Gamma, design = c(0, 1))
 }
 \arguments{
-\item{params}{vettore dei parametri contenuti in un unico vettore; in ordine: alfa_0j, beta_0j, mu0, sigma^2_0, rho, sigma^2_{0j}.}
+\item{params}{vettore dei parametri contenuti in un unico vettore; in
+ordine: alfa_0j, beta_0j, mu0, sigma^2_0, rho, sigma^2_{0j}.}
 
 \item{y}{vettore dei vartheta}
 
 \item{Gamma}{matrice Gamma}
 
-\item{design}{vettore che specifica il design (attualmente utile solo la sua dimensione)}
+\item{design}{vettore che specifica il design (attualmente utile solo la
+sua dimensione)}
 }
 \value{
 valore della log-verosimiglianza

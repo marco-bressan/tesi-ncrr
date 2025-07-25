@@ -10,23 +10,24 @@
 #'   primo livello sarà il _baseline_.
 #'
 #' @export
-ncrr.design <- function(x) {
+ncrr.design <- function(x, vcov.type = NULL) {
   treatments <- levels(x$treatment)
   if (all(c("mik", "sik") %in% colnames(x))) {# risposta normale
     theta <- x$mik
     gamma <- x$sik^2
   } else {
-    theta <- with(x, log(rik) - log(nik - rik))
-    gamma <- with(x, 1 / rik + 1 / (nik + rik))
+    theta <- with(x, log(pmax(.001, rik)) - log(pmax(.001, nik - rik)))
+    gamma <- with(x, 1 / pmax(.001, rik) + 1 / (nik + rik))
   }
   design <- tapply(x$treatment, x$study.id, \(z) as.integer(z) - 1)
   if (any(sapply(design, \(d) d[1] != 0))) {
-    warning("Alcuni studi non hanno baseline 0: le corrispondenti routine non sono al momento implementate!")
+    #warning("Alcuni studi non hanno baseline 0: le corrispondenti routine non sono al momento implementate!")
   }
   if (!is.character(x$study.id))
     names(design) <- NULL
   ll <- as.list(environment())
   class(ll) <- "ncrr.design"
+  attr(ll, "vcov.type") <- vcov.type
   return(ll)
 }
 
@@ -43,6 +44,38 @@ print.ncrr.design <- function(x, ...) {
   print(dd)
   cat("\n")
 }
+
+match.vcov.type <- function(type = c("normal", "achana", "equivar", "simple")) {
+  match.arg(type, several.ok = FALSE)
+}
+
+match.vcov.fun <- function(type) {
+  type <- match.vcov.type(type)
+  if (type == "normal")
+    return(crr.vcov)
+  get(paste("crr.vcov", type, sep = "."), envir = asNamespace("tesi.ncrr"))
+}
+
+match.vcov.fixed <- function(type, value = FALSE, np) {
+  type <- match.vcov.type(type)
+  ff <- switch(type, achana = "rho", equivar = "sigma2", simple = c("rho", "sigma2"))
+  if (isTRUE(value)) {
+    ff <- as.list(setNames(nm = ff))
+    if (type == "simple") {
+      ff[["sigma2"]] <- rep(NA, np)
+      ff[["rho"]] <- NA
+    } else if (type == "achana") {
+      ff[["rho"]] <- .5
+    } else if (type == "equivar") {
+      ff[["sigma2"]] <- rep(NA, np)
+    }
+  }
+  if (type == "achana") {
+    attr(ff, "parlen") <- c("sigma2" = 1)
+  }
+  ff
+}
+
 
 
 #' @export
@@ -64,20 +97,19 @@ subset.ncrr.design <- function(x, subset, ...) {
 }
 
 crr.get.sigma <- function(object, ..., raw = FALSE,
-                          type = c("normal", "simplified", "achana")) {
+                          type) {
   dd <- object$design
-  type <- match.arg(type)
-  vcovfn <- switch(type,
-                   "normal" = crr.vcov,
-                   "simplified" = crr.vcov.simple,
-                   "achana" = crr.vcov.achana)
+  type <- match.vcov.type(type)
+  vcovfn <- match.vcov.fun(type)
   #stopifnot("Baseline != 0 ancora da implementare!" = sapply(dd, \(d) d[1] == 0))
   dunique <- unique(dd)
   #browser()
   Sigmal <- lapply(dunique, \(d) {
     psel <- par.select.multi(d, ...)
     psel[["design"]] <- d
-    do.call(vcovfn, psel)
+    V <- do.call(vcovfn, psel)
+    if (anyNA(V)) stop("Na rilevati nel calcolo di sigma!") # togliere per efficientamento
+    V
   })
   if (raw)
     return(Sigmal[match(dd, dunique)])
@@ -170,15 +202,15 @@ get.matrix.from.design <- function(object, what = c("theta", "gamma")) {
 getInitial.ncrr.design <- function(object, data, ..., eps = 1e-10, seed = NA,
                                    rep = 1, transform = TRUE,
                                    fixed = NULL,
-                                   vcov.type = c("normal", "simplified", "achana")) {
-  vcov.type <- match.arg(vcov.type)
+                                   vcov.type = "normal") {
+  vcov.type <- match.vcov.type(vcov.type)
   if (!missing(data)) .NotYetUsed("data", error = FALSE)
   dd <- object$design
   nd <- length(unique(do.call(c, dd)))
-  fixed <- union(fixed, switch(vcov.type, simplified = "sigma2",
-                               achana = c("sigma2", "rho"),
-                               default = NULL))
-  parls <- crr.par.idx(nd - 1, fixed, lengths = TRUE)
+  fixed <- union(fixed, match.vcov.fixed(vcov.type))
+  parls <- crr.par.idx(nd - 1, fixed,
+                       parlen = attr(match.vcov.fixed(vcov.type), "parlen"),
+                       lengths = TRUE)
   init <- mapply(rep, list(alpha = 0,
                            beta = 1,
                            mu0 = 0, sigma20 = 1 - isTRUE(transform), rho = 0,
@@ -225,17 +257,20 @@ getInitial.ncrr.design <- function(object, data, ..., eps = 1e-10, seed = NA,
   } else {
     init <- do.call(c, init)
   }
-  lower <- mapply(rep, list(alpha = -Inf, beta = -Inf,
-                            mu0 = -Inf, sigma20 = eps, rho = -1,
-                            sigma2 = eps)[names(parls)],
-                  parls)
-  upper <- mapply(rep, list(alpha = Inf, beta = Inf,
-                            mu0 = Inf, sigma20 = Inf, rho = 1,
-                            sigma2 = Inf)[names(parls)],
-                  parls)
-  if (!is.null(fixed)) {
-    lower <- lower[-match(names(fixed), names(lower))]
-    upper <- upper[-match(names(fixed), names(upper))]
+  lower <- upper <- NULL
+  if (!transform) {
+    lower <- mapply(rep, list(alpha = -Inf, beta = -Inf,
+                              mu0 = -Inf, sigma20 = eps, rho = -1,
+                              sigma2 = eps)[names(parls)],
+                    parls)
+    upper <- mapply(rep, list(alpha = Inf, beta = Inf,
+                              mu0 = Inf, sigma20 = Inf, rho = 1,
+                              sigma2 = Inf)[names(parls)],
+                    parls)
+    if (!is.null(fixed)) {
+      lower <- lower[-match(names(fixed), names(lower))]
+      upper <- upper[-match(names(fixed), names(upper))]
+    }
   }
   structure(init,
             lower = unlist(lower),

@@ -4,17 +4,18 @@
 \alias{ncrr.design}
 \title{Specifica il disegno della meta-analisi}
 \usage{
-ncrr.design(x, baseline)
+ncrr.design(x, vcov.type = NULL)
 }
 \arguments{
-\item{x}{un dataframe}
-
-\item{baseline}{livello baseline (di default il primo)}
+\item{x}{un dataframe. Se contenente le colonne $m_{ik}$ e $s_{ik}$, queste
+vengono interpretate come medie e dev.std dello studio, che viene quindi
+assunto ad outcome normale. In questo caso,
+$\hat\Gamma=\text{diag}(s_{ik}^2)$ \code{x$treatment} dev'essere un fattore: il
+primo livello sarà il \emph{baseline}.}
 }
 \value{
 lista con i dettagli dell'esperimento
 }
 \description{
-\strong{NOTA:} al momento bisogna assicurarsi che il dataframe sia ordinato per studio
-e per trattamento, con il baseline in prima posizione
+Specifica il disegno della meta-analisi
 }

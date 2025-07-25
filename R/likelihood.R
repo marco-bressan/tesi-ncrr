@@ -12,6 +12,7 @@
 crr.optim <- function(design, init, rs = 1, transform = TRUE,
                       optim.method = "Nelder-Mead",
                       optim.control = list(), ...) {
+  .NotYetImplemented()
   fn <- get.llik.from.design(design, ...)
   stopifnot("I parametri `init` non sono nominati!" = !is.null(names(init)))
   #match(names(init),PNAMES) #???
@@ -35,6 +36,16 @@ crr.optim <- function(design, init, rs = 1, transform = TRUE,
   #....
 }
 
+crr.fix.pars <- function(..., parname, value, np) {
+  .NotYetImplemented()
+  # da rifinire...
+  parnames <- c("alpha", "beta", "mu0", "sigma20", "rho", "sigma2")
+  parregex <- paste(parnames, collapse = "|")
+  nm <- stringr::str_extract_all(sprintf("(%s)([0-9]+)", parregex), ...names())
+  browser()
+  params
+}
+
 ##' A partire da un *design*, crea un oggetto funzione che può essere
 ##' passato ad `optim`.
 ##'
@@ -44,32 +55,43 @@ crr.optim <- function(design, init, rs = 1, transform = TRUE,
 ##' @param transform applica trasformazioni ai parametri di
 ##'   varianza/correlazione
 ##' @param echo regola il livello delle stampe di debug
-##' @param vcov.type struttura della matrice di varianza-covarianza: con
-##'   varianze specifiche per studio come suggerito da Guolo ("normal");
-##'   versione semplificata con sigma0=sigma1=... ("simplified"); con tutte le
-##'   varianze uguali pari a sigma0 e le correlazioni sigma0/2 ("achana").
+##' @param vcov.type struttura della matrice di varianza-covarianza.
 ##' @return una funzione del vettore dei parametri (in tal senso `llik1` ne
 ##'   costituisce una versione semplificata), con la possibilità di fissare gli
 ##'   stessi (opzione `fixed = list(...)`)
 ##' @author Marco Bressan
 get.llik.from.design <- function(object, transform = TRUE, echo = 0,
-                                 vcov.type = "normal") {
+                                 vcov.type = attr(object, "vcov.type")) {
   np <- length(tt <- unique(do.call(c, object$design)))
   fixed.default <- NULL
-  if (vcov.type %in% c("simplified", "achana")) {
-    fixed.default[["sigma2"]] <- rep(1, np - 1)
+  if (is.null(vcov.type))
+    vcov.type <- "normal"
+  vcov.type <- match.vcov.type(vcov.type)
+  fixed.default <- match.vcov.fixed(vcov.type, TRUE, np - 1)
+  GETPARS <- function(params, fixed) {
+    if (length(names(fixed.default)) > 0) {
+      fixed[names(fixed.default)] <- fixed.default
+      attributes(fixed) <- attributes(fixed.default)
+    }
+    params <- crr.split.par(params, np - 1, transform = transform,
+                            fixed = names(fixed),
+                            parlen = attr(fixed, "parlen"))
+    #params <- c(params, fixed)
+    #params <- params[match(PNAMES, names(params))]
+    params
   }
-  if (vcov.type == "achana") {
-    fixed.default[["rho"]] <- 0
-  }
-  # questo è il return,  la funzione da ottimizzare
+
+  # questo è il return,  la funzione obiettivo
   function(params, y = crr.get.theta(object, raw = TRUE),
            Gamma = crr.get.Gamma(object, raw = TRUE),
-           fixed = fixed.default) {
-    params <- crr.split.par(params, np - 1, transform = transform,
-                            fixed = names(fixed))
-    params <- c(params, fixed)
-    params <- params[match(PNAMES, names(params))]
+           fixed = NULL) {
+    params <- GETPARS(params, fixed)
+    if (echo > 1) {
+      mapply( \(x, nm) paste(nm, "=", deparse1(round(x, 6))),
+             params, names(params)) |>
+        paste(collapse = ", ") |>
+        cat("\n")
+    }
     mu <- do.call(crr.get.mu,
                   append(list(object = object, raw = TRUE),
                          params[c("alpha", "beta", "mu0")]))
@@ -83,30 +105,22 @@ get.llik.from.design <- function(object, transform = TRUE, echo = 0,
     if (anyNA(ll)) {
       warning("Si sono prodotti NA nel calcolo della verosimiglianza,",
               " che sono stati scartati.")
+      stop("rilevati NA nella verosimiglianza")
+    }
+    if (echo > 2) {
+      cat("CURRENT PIECEWISE LLIK:\n")
+      mapply(\(m, s, l) {
+        colnames(s) <- c("SIGMA", rep("", ncol(s) - 1))
+        print(cbind("MU" = m, s))
+        print(c("LLIK" = l))
+      }, mu, Sigma, ll)
     }
     #browser()
     ll <- sum(ll, na.rm = TRUE)
-
-    if (echo > 0) {
+    if (echo > 0)
       cat("CURRENT VALUE: ", ll, "\n")
-      if (echo > 1) {
-        cat("PARAMS: ")
-        with(params, {
-          lapply(list(alpha, beta, mu0, sigma20, rho, sigma2),
-                 \(x) deparse1(round(x, 6))) |>
-            append(x = list(fmt = paste("alpha = %s, beta = %s,",
-                                        "\tmu0 = %s, sigma20 = %s, rho = %s,",
-                                        "\tsigma2 = %s", sep = "\n")), values = _) |>
-            do.call(sprintf, args = _) |>
-            cat("\n")
-        })
-        if (echo > 2)
-          print(list(marginal_mu = do.call(c, mu),
-                     marginal_Sigma = blockdiag(Sigma),
-                     marginal_tildeSigma = blockdiag(Sigma) + blockdiag(Gamma)))
-        cat("=====================================\n")
-      }
-    }
+    if (echo > 1)
+      cat("=====================================\n")
     return(ll)
   }
 }
@@ -126,6 +140,7 @@ get.llik.from.design <- function(object, transform = TRUE, echo = 0,
 ##' @author Marco Bressan
 ##' @export
 llik1 <- function(params, y, Gamma, design = c(0, 1)) {
+  stop("Non usare questa funzione!")
   params <- crr.split.par(params, np <- length(design) - 1)
   mu <- rep(NA, np + 1)
   Sigma <- matrix(0, np + 1, np + 1)

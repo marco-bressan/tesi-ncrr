@@ -32,20 +32,21 @@ des <- ncrr.design(smoke.alarm)
 # solo i design che contengono lo zero
 #des <- subset(des, which(sapply(des$design, \(x) 0 %in% x)))
 
-opt.fn <- get.llik.from.design(des, vcov.type = "achana", echo = 9)
+opt.fn <- get.llik.from.design(des, vcov.type = "achana", echo = 0)
 opt1 <- optim(ini1 <- getInitial(des, vcov.type = "achana"),
               \(x) -opt.fn(x), method = "BFGS")
 crr.split.par(opt1$par, 6, transform = TRUE, fixed = match.vcov.fixed("achana"))
 
+#mettere come primo passo
 opt2 <- optim(opt1$par, \(x) -opt.fn(x), method = "Nelder-Mead")
-crr.split.par(opt2$par, 5, transform = TRUE, fixed = match.vcov.fixed("achana"))
+crr.split.par(opt2$par, 6, transform = TRUE, fixed = match.vcov.fixed("achana"))
 
 #'
 #' Parametri (I colonna) con relativi s.e.
 #'
-cbind(crr.transform.par(opt2$par, np = 5, split = FALSE,
+cbind(par = crr.transform.par(opt2$par, np = 6, split = FALSE,
                         fixed = match.vcov.fixed("achana"), inverse = TRUE),
-      optimHess(opt1$par, \(x) -opt.fn(x)) |>
+      stderr = optimHess(opt1$par, \(x) -opt.fn(x)) |>
         solve() |>
         diag() |>
         sqrt()
@@ -56,14 +57,14 @@ opt.fn <- get.llik.from.design(des, vcov.type = "normal")
 as.list(environment(opt.fn))
 opt1 <- optim(getInitial(des, vcov.type = "normal", transform = TRUE),
               \(x) -opt.fn(x), method = "BFGS")
-crr.split.par(opt1$par, 5, transform = TRUE)
+#crr.split.par(opt1$par, 5, transform = TRUE)
 
 opt2 <- optim(opt1$par, \(x) -opt.fn(x), method = "Nelder-Mead")
-crr.split.par(opt2$par, 5, transform = TRUE)
+#crr.split.par(opt2$par, 5, transform = TRUE)
 
 opt2h <- optimHess(opt2$par, \(x) -opt.fn(x))
-cbind(crr.transform.par(opt2$par, np = 5, split = FALSE, inverse = TRUE)[-13],
-      opt2h[-13, ][, -13] |>
+cbind(crr.transform.par(opt2$par, np = 6, split = FALSE, inverse = TRUE)[-15],
+      opt2h[-15, ][, -15] |>
         solve() |>
         diag() |>
         sqrt()) |>
