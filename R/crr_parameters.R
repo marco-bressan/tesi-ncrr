@@ -35,17 +35,14 @@ crr.vcov <- function(beta, sigma20, sigma2, rho, design = c(0, 1)) {
       # pari a FALSE: in questo caso si userà la parametrizzazione di Guolo
       # !!! SI ASSUME CHE b SIA IN PRIMA POSIZIONE !!!
       betab <- beta[-1] - beta[1]
-      sigma2b <- sigma2[-1] - sigma2[1]
-      if (!isFALSE(any(sigma2b < 0))) {
+      sigmab <- sqrt(rho * sigma2[-1] * sigma2[1])
+      if (any(!is.finite(sigmab))) {
         warning("studio baseline fa venire varianze negative!")
         browser()
       }
       vub <- beta[1]^2 * sigma20 + sigma2[1]
-      vv <- matrix(NA, length(beta), length(beta))
-      vv[1] <- vub
-      vv[1, -1] <- vv[-1, 1] <- betab^2 * vub
-      vv[-1, -1] <- tcrossprod(betab) * vub +
-        diagoffdiag(rho^2, rho^3, length(betab)) * tcrossprod(sqrt(sigma2b)) * sigma2[1]
+      vv <- tcrossprod(c(1, betab)) * vub
+      vv[-1, -1] <- vv[-1, -1] + diagoffdiag(1, rho, length(design) - 1) * tcrossprod(sigmab)
       return(vv)
     } else {
       #message("Calcolo varcov con studio senza baseline!")

@@ -1,4 +1,4 @@
 #' @import stats mvtnorm
 NULL
 
-USA_MIA_MODELLAZIONE <- FALSE
+USA_MIA_MODELLAZIONE <- TRUE

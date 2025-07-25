@@ -30,12 +30,12 @@ des <- ncrr.design(smoke.alarm)
 #' altri metodi al momento decido di toglierli dal dataset
 
 # solo i design che contengono lo zero
-#des <- subset(des, which(sapply(des$design, \(x) 0 %in% x)))
+des <- subset(des, which(sapply(des$design, \(x) 0 %in% x)))
 
 opt.fn <- get.llik.from.design(des, vcov.type = "achana", echo = 9)
 opt1 <- optim(ini1 <- getInitial(des, vcov.type = "achana"),
               \(x) -opt.fn(x), method = "BFGS")
-crr.split.par(opt1$par, 6, transform = TRUE, fixed = match.vcov.fixed("achana"))
+crr.split.par(opt1$par, 5, transform = TRUE, fixed = match.vcov.fixed("achana"))
 
 opt2 <- optim(opt1$par, \(x) -opt.fn(x), method = "Nelder-Mead")
 crr.split.par(opt2$par, 5, transform = TRUE, fixed = match.vcov.fixed("achana"))
