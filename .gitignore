@@ -3,3 +3,4 @@
 data-raw/*.pdf
 data-raw/*.qmd
 .R*
+.RData

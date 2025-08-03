@@ -20,7 +20,7 @@ simu.pars <- list(alpha = c(0.53118984013899, 1.0431973777787, 0.004342312423845
 simu.pars.v <- crr.join.par(simu.pars) |> crr.transform.par()
 
 des <- ncrr.design(smoke.alarm, VCOVTYPE)
-simu.des <- simulate(des, params = simu.pars, seed = 342)[[1]]
+simu.des <- simulate(des, params = simu.pars, seed = 211)[[1]]
 #data <- simulate(des, params = simu.pars)
 llik <- get.llik.from.design(simu.des)
 llik.fun <- function(theta, data) {
@@ -35,7 +35,7 @@ llik.fun <- function(theta, data) {
   return(L)
 }
 gendat.fun <- function(theta, data) {
-  theta <- crr.split.par(theta, length(data$treatments) - 1,
+  theta <- crr.split.par(theta, length(data$treatments) - 1, transform = TRUE,
                          fixed = match.vcov.fixed(attr(data, "vcov.type")))
   suppressMessages(simulate(data, params = theta, seed = 342)[[1]]) # estraggo solo il design, non tutta la lista
 }
@@ -49,7 +49,7 @@ psi.fun <- function(theta) {
   return(L)
 }
 
-options(warn = 2)
+options(warn = 1)
 library(likelihoodAsy)
 Rstar <- rstar(simu.des, thetainit = simu.pars.v, floglik = llik.fun,
                fpsi = psi.fun,  psival = psi.fun(simu.pars.v),
@@ -74,4 +74,4 @@ load("prova_likasy1")
 # confrontare stime di mv del pacchetto e mie
 # verificare normalità di rstar
 
-# rstarc
+# rstar.ci
