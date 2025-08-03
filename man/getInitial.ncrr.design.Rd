@@ -4,7 +4,17 @@
 \alias{getInitial.ncrr.design}
 \title{Parametri iniziali per l'ottimizzatore della verosimiglianza NCRR}
 \usage{
-\method{getInitial}{ncrr.design}(object, data, ..., eps = 1e-10)
+\method{getInitial}{ncrr.design}(
+  object,
+  data,
+  ...,
+  eps = 1e-10,
+  seed = NA,
+  rep = 1,
+  transform = TRUE,
+  fixed = NULL,
+  vcov.type = "normal"
+)
 }
 \arguments{
 \item{object}{Oggetto di tipo \code{ncrr.design}}
@@ -14,6 +24,22 @@
 \item{...}{Non usati}
 
 \item{eps}{Tolleranza numerica per lo 0}
+
+\item{seed}{Seme per la generazione di un punto di partenza casuale. Se si
+passa un singolo NA, il comportamento è completamente casuale e non
+riproducibile. Può essere un vettore con nomi dei parametri \code{c(alpha, beta, mu0, sigma20, rho, sigma2)}: per specificare quali NON
+inizializzare casualmente, mettere NA.}
+
+\item{rep}{numero di random start}
+
+\item{transform}{applica le trasformazioni ai parametri?}
+
+\item{fixed}{elenco di nomi di parametri fissati (cioè esclusi dal vettore/matrice)}
+
+\item{vcov.type}{preimpostazioni sui parametri fixed}
+}
+\value{
+un vettore o una matrice con i punti di partenza casuali (se rep>1)
 }
 \description{
 Parametri iniziali per l'ottimizzatore della verosimiglianza NCRR

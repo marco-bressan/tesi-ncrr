@@ -207,6 +207,11 @@ u.stat <- function(theta.hat, theta.tilde){
 }
 
 
+# per il modello naive dovrei considerare tutti i baseline vs tutti i trattamenti presi uno per volta?
+
+
+
+
 ## parameter vector theta:c(beta0, beta1, mu, sigma2, tau2)
 ## beta1.null= values of beta1 under H0
 ## vector of information xx = c(eta, xi, var.eta, cov.etaxi, cov.etaxi, var.xi)

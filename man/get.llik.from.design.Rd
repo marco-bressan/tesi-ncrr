@@ -2,16 +2,34 @@
 % Please edit documentation in R/likelihood.R
 \name{get.llik.from.design}
 \alias{get.llik.from.design}
-\title{Funzione per il calcolo della verosimiglianza per NCRR.}
+\title{Funzione per la definizione della verosimiglianza per NCRR.}
 \usage{
-get.llik.from.design(object)
+get.llik.from.design(
+  object,
+  transform = TRUE,
+  echo = 0,
+  vcov.type = attr(object, "vcov.type")
+)
 }
 \arguments{
 \item{object}{oggetto che definisce il design}
+
+\item{transform}{applica trasformazioni ai parametri di
+varianza/correlazione}
+
+\item{echo}{regola il livello delle stampe di debug}
+
+\item{vcov.type}{struttura della matrice di varianza-covarianza.}
 }
 \value{
-una funzione con parametro come \code{llik1}
+una funzione del vettore dei parametri (in tal senso \code{llik1} ne
+costituisce una versione semplificata), con la possibilità di fissare gli
+stessi (opzione \code{fixed = list(...)})
 }
 \description{
-Funzione per il calcolo della verosimiglianza per NCRR.
+A partire da un \emph{design}, crea un oggetto funzione che può essere
+passato ad \code{optim}.
+}
+\author{
+Marco Bressan
 }

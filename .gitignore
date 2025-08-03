@@ -1,1 +1,5 @@
 .Rproj.user
+*~
+data-raw/*.pdf
+data-raw/*.qmd
+.R*

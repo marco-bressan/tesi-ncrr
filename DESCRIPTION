@@ -1,10 +1,10 @@
 Package: tesi.ncrr
 Title: Progetto di Tesi sulla Network Control Risk Regression
 Version: 0.0.0.9000
-Authors@R:
-    person("Marco", "Bressan", "marco.bressan.12@studenti.unipd.it", role = c("aut", "cre"))
-    person("Annamaria", "Guolo", "annamaria.guolo@unipd.it", role = c("aut"))
-    person("Nicola", "Sartori", "nicola.sartori@unipd.it", role = c("aut"))
+Authors@R: c(
+  person("Marco", "Bressan", email = "marco.bressan.12@studenti.unipd.it", role = c("aut", "cre")),
+  person("Annamaria", "Guolo", email = "annamaria.guolo@unipd.it", role = c("aut")),
+  person("Nicola", "Sartori", email = "nicola.sartori@unipd.it", role = c("aut")))
 Description: Progetto di tesi sulla Network Control Risk Regression.
 License: GPL (>= 3)
 Encoding: UTF-8
