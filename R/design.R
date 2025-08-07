@@ -96,8 +96,7 @@ subset.ncrr.design <- function(x, subset, ...) {
   return(x)
 }
 
-crr.get.sigma <- function(object, ..., raw = FALSE,
-                          type) {
+crr.get.sigma <- function(object, ..., raw = FALSE, type) {
   dd <- object$design
   type <- match.vcov.type(type)
   vcovfn <- match.vcov.fun(type)
@@ -116,9 +115,71 @@ crr.get.sigma <- function(object, ..., raw = FALSE,
   blockdiag(Sigmal[match(dd, dunique)])
 }
 
+crr.get.scmu <- function(object, ...) {
+  stopifnot(!USA_MIA_MODELLAZIONE)
+  dd <- object$design
+  #dd <- list(c(0, 1), c(0, 2), c(1, 3), c(0, 1, 2), c(2, 3))
+  params <- list(...)
+  pos <- cumsum(lengths(dd))
+  ll <- pos[length(pos)]
+  faclev <- sort(unique(do.call(c, dd)))
+  M0 <- numeric(ll)
+  np <- length(params$beta)
+  M1 <- matrix(0, ll, np)
+  pos <- c(0, pos)
+  lapply((dd), \(jj) {
+    #jj <- dd[[i]]
+    M <- vapply(jj, \(j) {
+      row <- numeric(np)
+      if (j > 0) row[j] <- 1
+      row
+    }, FUN.VALUE = numeric(np))
+    if (all(jj > 0))
+      M <- M[, c(2, 1)] - M # solo per due studi senza baseline
+    M0 = as.numeric(jj == 0)
+    M1 = t(M)
+    list(alpha = M1, beta = params$mu0 * M1, mu0 = M0 + M1 %*% params$beta)
+    #M0[(pos[i] + 1):pos[i + 1]] <- as.numeric(jj == 0)
+    #M1[(pos[i] + 1):pos[i + 1], ] <- t(M)
+  })
+  #cbind(alpha = M1, beta = params$mu0 * M1, mu0 = M0 + M1 %*% params$beta)
+}
+
+crr.get.scSigma <- function(object, ...) {
+  dd <- object$design
+  params <- list(...)
+  np <- length(params$beta)
+  scs0 <- tcrossprod(c(1, params$beta))
+  Dst <- diag(c(0, rep(sqrt(params$sigma2), np))) #TODO: centralizzare sigma2
+  if (is.null(params$rho))  params$rho <- 0.5 #TODO: hardcoded
+  Rst <- cbind(0, rbind(0, matrix(params$rho, np, np)))
+  diag(Rst) <- c(0, rep(1, np))
+  dRst <- Rst * 0
+  dRst[-1, -1] <- 1 - diag(np)
+  scs <- vapply(seq_along(params$sigma2), \(j) {
+    dDstj <- Dst * 0
+    dDstj[j + 1, j + 1] <- params$sigma2[j]
+    (kronecker(Dst, dDstj) + kronecker(dDstj, Dst)) %*% c(Rst)
+  }, FUN.VALUE = array(NA_real_, dim(Dst)))
+  scrho <- Dst %*% dRst %*% Dst
+  lapply (dd, \(d) {
+    if (0 %in% d) {
+      s0j <- scs0[d + 1, d + 1]
+      rhoi <- scrho[d + 1, d + 1]
+    } else {
+      betai <- c(params$beta[rev(d)] - params$beta[d])
+      s0j <- tcrossprod(betai)
+      rhoi <- matrix(0, 2, 2) # con solo due studi sempre = 0 (teoricamente scrho[c(1, d[2]), c(1, d[2])])
+    }
+
+    list(sigma20 = s0j, rho = rhoi,
+         sigma2 = scs[d + 1, d + 1 , if(length(params$sigma2 == 1))  1 else d,
+                      drop = FALSE]) #TODO: ottimizzare; essenziale mantenere 3^ dim
+  })
+}
+
 crr.get.mu <- function(object, ..., raw = FALSE) {
   dd <- object$design
-  #stopifnot("Baseline != 0 ancora da implementare!" = sapply(dd, \(d) d[1] == 0))
   dunique <- unique(dd)
   #browser()
   mul <- lapply(dunique, \(d) {

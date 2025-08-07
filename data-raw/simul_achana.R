@@ -27,18 +27,29 @@ des <- ncrr.design(smoke.alarm)
 
 #' Nota: la funzione avverte che i baseline != 0 non sono implementati.
 #' In realtà, per `vcov="achana"` lo sarebbero ma per confronto con gli
-#' altri metodi al momento decido di toglierli dal dataset
+#' altri metodi al momento decido di toglierli dal dataset.
+#' Si veda il file `*_compl.R` per la versione con il design completo.
 
 # solo i design che contengono lo zero
 des <- subset(des, which(sapply(des$design, \(x) 0 %in% x)))
-
-opt.fn <- get.llik.from.design(des, vcov.type = "achana", echo = 9)
+opt.fn <- get.llik.from.design2(des, vcov.type = "achana", echo = 0)
 opt1 <- optim(ini1 <- getInitial(des, vcov.type = "achana"),
               \(x) -opt.fn(x), method = "BFGS")
 crr.split.par(opt1$par, 5, transform = TRUE, fixed = match.vcov.fixed("achana"))
 
-opt2 <- optim(opt1$par, \(x) -opt.fn(x), method = "Nelder-Mead")
-crr.split.par(opt2$par, 5, transform = TRUE, fixed = match.vcov.fixed("achana"))
+score.fn <- attr(opt.fn, "score")
+pt1 <- c(alpha = c(0.342949, 0.616492, 0.325275, 5.302684, 3.783537),
+         beta = c(0.934311, 1.583615, 1.159104, -1.811393, -0.777594),
+         mu0 = 0.896856, sigma20 = 3.204052, sigma2 = 0.1) # punto non ottimale
+pt1 <- crr.transform.par(pt1)
+pt2 <- opt1$par
+opt.fn(pt1)
+score.fn(pt1)
+opt.fn(pt2)
+score.fn(pt2)
+opt2 <- optim(ini1, \(x) -opt.fn(x), gr = \(x) -score.fn(x)[names(ini1)], method = "BFGS",
+              control = list(reltol = .Machine$double.eps, trace = 1))
+score.fn(opt2$par)
 
 #'
 #' Parametri (I colonna) con relativi s.e.
