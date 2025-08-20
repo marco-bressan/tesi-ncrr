@@ -25,6 +25,7 @@ ncrr.design <- function(x, vcov.type = NULL) {
   }
   if (!is.character(x$study.id))
     names(design) <- NULL
+  nj <- with(x, tapply(nik, treatment, sum))
   ll <- as.list(environment())
   class(ll) <- "ncrr.design"
   attr(ll, "vcov.type") <- vcov.type
@@ -44,6 +45,124 @@ print.ncrr.design <- function(x, ...) {
   print(dd)
   cat("\n")
 }
+
+#' Rappresentazione grafica di una Network Meta-Analisi
+#'
+#' Disegna un grafo a partire da un oggetto `ncrr.design`.
+#'
+#' @param object Un oggetto di tipo ncrr.design.
+#' @param vertex.size.factr Fattore di scala per la dimensione dei vertici (default: 50).
+#' @param edge.width.factr Fattore di scala per la larghezza degli archi (default: 1).
+#' @param pos.offset Angolo in radianti di traslazione della disposizione dei nodi rispetto
+#' all'estremo superiore della circonferenza unitaria (default: 0). Ignorato se `smart.layout.seed`
+#' è diverso da `NA`.
+#' @param smart.layout.seed Imposta il seed per la generazione di un layout casuale
+#' "intelligente", ovvero con meno intersezioni di archi possibile. Se `NA`, disabilita
+#' la funzionalità e i nodi verranno disposti in cerchio.
+#' @param ... Parametri aggiuntivi passati a `plot.igraph()`
+#'
+#' @examples
+#' object <- ncrr.design(smoking)
+#' plot(object)
+#'
+#' @export
+plot.ncrr.design <- function(object, vertex.size.factr = 50,
+                             edge.width.factr = 5, pos.offset = 0,
+                             smart.layout.seed = NA, ...) {
+  nj <- sqrt(object$nj)
+  M <- do.call(cbind, lapply(object$design, combn, m = 2)) + 1 #TODO: usare rbind(x[1], x[-1])??
+  M <- do.call(cbind, lapply(object$design, \(x) rbind(x[-1], x[1]))) + 1
+
+  Mn <- matrix("", nrow = ncol(M), ncol = nrow(M))
+  Mn[] <- object$treatments[t(M)]
+
+  edges <- as.data.frame(table(M[1,], M[2,]))
+  edges <- subset(edges, Freq > 0)
+
+  G <- igraph::graph_from_data_frame(edges, directed = FALSE)
+  vid <- as.numeric(names(igraph::V(G)))
+
+  igraph::V(G)$name <- object$treatments[vid]
+  igraph::V(G)$size <- vertex.size.factr * (as.vector(nj) / max(nj))[vid]
+  igraph::E(G)$width <- edge.width.factr * (0.5 + edges$Freq / max(edges$Freq))
+
+  glay <- NULL
+  if (anyNA(smart.layout.seed))
+    glay <- t(sapply(pos.offset + pi/2 + 1:length(nj) * 2*pi/length(nj), \(x) c(cos(x), sin(x))))
+  else
+    set.seed(smart.layout.seed)
+  igraph:::plot.igraph(G, vertex.label = igraph::V(G)$name,
+                       vertex.size = igraph::V(G)$size, layout = glay, ...)
+}
+
+
+#' L'Abbé Plot
+#'
+#' Crea un grafico di L'Abbé plot a partire da un oggetto
+#' di classe `ncrr.design`
+#'
+#' @param object Un oggetto contenente i dati necessari per il grafico.
+#' @param point.size.fattore Fattore di scala per la dimensione dei punti (default: 3).
+#' @param baseline.colore Colore della linea di baseline (default: "gray30").
+#' @param legend.pos Posizione della legenda (default: "bottomright"). Imposta a NULL per non visualizzare la legenda.
+#'
+#' @examples
+#' object <- ncrr.design(smoking)
+#' labbe.plot(object)
+#'
+#' @export
+labbe.plot <- function(object, cex.factr = 3, abline.col = "gray30", legend.pos = "bottomright",
+                       xylims = NULL,
+                       xlab = "Perc. of events in control group",
+                       ylab = "Perc. of events in treatment group") {
+  pct <- with(object$x, rik / nik)
+  lc <- cumsum(ll <- lengths(object$design))
+  lc <- c(0, lc[-length(lc)])
+
+  pct <- mapply(\(pos, len) {
+    pp <- rbind(n = object$x$nik[(pos + 1):(pos + len)],
+                pct = pct[(pos + 1):(pos + len)])
+    if (ncol(pp) > 2) {
+      pp <- cbind(n = unname(expand.grid(pp[1, 1], pp[1, -1], KEEP.OUT.ATTRS = FALSE)),
+                  pct = unname(expand.grid(pp[2, 1], pp[2, -1], KEEP.OUT.ATTRS = FALSE)))
+    } else {
+      pp <- cbind(n = t(pp[1, ]), pct = t(pp[2, ]))
+      colnames(pp) <- paste(rep(c("n", "pct"), c(2, 2)), rep(1:2, 2), sep = ".")
+    }
+    return(pp)
+  }, lc, ll, SIMPLIFY = FALSE)
+
+  pct.data <- do.call(rbind, mapply(\(x, ...) cbind(as.data.frame(x), ...),
+                                    x = pct, study.id = seq_along(pct),
+                                    trt = lapply(object$design, \(x) paste(x[1], x[-1], sep = "-")),
+                                    SIMPLIFY = FALSE))
+
+  pct.data$trt <- factor(pct.data$trt)
+  pct.data <- pct.data[order(pct.data$n.2, decreasing = TRUE), ] # per la sovrapposizione dei punti
+
+  # Creazione del grafico
+  if (is.null(xylims)) xylims <- range(c(pct.1, pct.2))
+  plot(0, 0, type = "n", xlim = xylims, ylim = xylims, xlab = xlab, ylab = ylab)
+  # ciclo un punto alla volta per evitare che
+  cexs <- with(pct.data, 1 + cex.factr * (n.2 / max(n.2)))
+  cols <- with(pct.data, 1 + as.integer(trt))
+  borders <- with(pct.data, ifelse(substr(as.character(trt), 1, 1) == "0", 1, 13))
+  for (i in seq_len(nrow(pct.data))) {
+    pct.data.row <- pct.data[i, ]
+    points(pct.2 ~ pct.1, data = pct.data.row, pch = 16, cex = cexs[i], col = cols[i])
+    points(pct.2 ~ pct.1, data = pct.data.row, pch = borders[i], cex = cexs[i])
+  }
+  abline(a = 0, b = 1, lty = 2, col = abline.col)
+
+  # Aggiunta della legenda se legend.pos non è NULL
+  if (!is.null(legend.pos)) {
+    legend(legend.pos, col = c(1 + seq_along(levels(pct.data$trt)), 1, 1),
+           pch = c(rep(16, length(levels(pct.data$trt))), 1, 13),
+           legend = c(gsub("-", " vs. ", levels(pct.data$trt)), "baseline", "no baseline"))
+  }
+}
+
+
 
 match.vcov.type <- function(type = c("normal", "achana", "equivar", "simple")) {
   match.arg(type, several.ok = FALSE)
