@@ -7,20 +7,22 @@ object <- ncrr.design(smoking)
 # NMA ==========
 
 nj <- sqrt(object$nj)
-M <- do.call(cbind, lapply(object$design, combn, m = 2)) + 1
+M <- do.call(cbind, lapply(object$design, \(x) rbind(x[-1], x[1]))) + 1
 
 
 edges <- as.data.frame(table(M[1,], M[2,]))
 edges <- subset(edges, Freq > 0)
 G <- igraph::graph_from_data_frame(edges, directed = FALSE)
 
-igraph::V(G)$name <- object$treatments
-igraph::V(G)$size <- 50 * (as.vector(nj) / max(nj))
-igraph::E(G)$width <- edges$Freq
+igraph::V(G)$size <- 50 * sqrt((as.vector(nj) / max(nj)))
+igraph::E(G)$width <- edges$Freq/2
+igraph::V(G)$name <- object$treatments[as.numeric(names(igraph::V(G)))]
 
-plot(G, vertex.label = igraph::V(G)$name, vertex.size = igraph::V(G)$size)
-
-plot(object)
+glay <- t(sapply(pi/2 + 1:length(nj) * 2*pi/length(nj), \(x) 2 * c(cos(x), sin(x))))
+plot(G, vertex.label = igraph::V(G)$name, vertex.size = igraph::V(G)$size,
+     layout = glay)
+plot(ncrr.design(smoke.alarm), vertex.label.cex = 0.7, vertex.label.family = "Arial",
+     pos.offset = 0.6, smart.layout.seed = NA)
 labbe.plot(object, xylims = c(0, 0.7))
 
 # L'abbè plot ==========
@@ -45,6 +47,7 @@ pct.data <- do.call(rbind, mapply(\(x, ...) cbind(as.data.frame(x), ...),
                                   trt = lapply(object$design, \(x) paste(x[1], x[-1], sep = "-")),
                                   SIMPLIFY = FALSE))
 pct.data$trt <- factor(pct.data$trt)
+pct.data <- pct.data[order(pct.data$n.2, decreasing = TRUE), ]
 plot(pct.2 ~ pct.1, data = pct.data, pch = 16, cex = 1 + 3 * (n.2 / max(n.2)),
      col = 1 + as.integer(trt), xlim = range(c(pct.1, pct.2)), ylim = range(c(pct.1, pct.2)))
 points(pct.2 ~ pct.1, data = pct.data,
