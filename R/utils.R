@@ -9,14 +9,8 @@ blockdiag <- function(mats, fill = 0) {
   out
 }
 
-...not.used <- function(..., output.type = "message") {
-  if (length(output.type) == 0)
-    invisible()
-  if (...length() > 0)
-    do.call(output.type, list("Argomenti extra (`...`) non utilizzati: ",
-                              paste(...names(), collapse = ", "),
-                              "."))
-  invisible()
+diagoffdiag <- function(x = 1, offx = 0, n = length(x)) {
+  offx * (1 - diag(n)) + x * diag(n)
 }
 
 ##' Effettua una sostituzione nella lista dei parametri di una NCRR

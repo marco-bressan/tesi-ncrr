@@ -11,7 +11,7 @@ subst.params(params, subst)
 
 \item{subst}{Lista o vettore delle sostituzioni.
 La sostituzione avviene in base al nome, che dunque è obbligatorio per
-ogni parametro}
+ogni parametro.}
 }
 \value{
 \code{params} opportunamente modificato

@@ -1,51 +1,3 @@
-##' Funzione per l'ottimizzazione centralizzata
-##'
-##' @title Ottimizzazione di una network crr.
-##' @param design Disegno dello studio (creato con l'apposita funzione)
-##' @param init Valori iniziali in formato lista. I parametri esplicitamente
-##'   settati a `NULL` sono assunti fissati; quelli mancanti vengono inferiti
-##'   automaticamente.
-##' @param rs Numero di random-start. Se impostato, sovrascrive i valori di
-##'   partenza specificati da init
-##' @return Risultato dell'ottimizzazione
-##' @author Marco Bressan
-crr.optim <- function(design, init, rs = 1, transform = TRUE,
-                      optim.method = "Nelder-Mead",
-                      optim.control = list(), ...) {
-  .NotYetImplemented()
-  fn <- get.llik.from.design(design, ...)
-  stopifnot("I parametri `init` non sono nominati!" = !is.null(names(init)))
-  #match(names(init),PNAMES) #???
-  fixpars <- names(Filter(is.null, init))
-  explicpars <- Filter(is.numeric, init)
-  par.init <- getInitial(design, rep = rs, fixed = fixpars)
-  opt.fn <- get.llik.from.design(design, transform = transform, )
-  if (length(explicpars) > 0) {
-    if (rs == 1) {
-      par.init[names(explicpars)] <- explicpars
-      oo <- optim(par.init, \(x) -opt.fn(x), control = optim.control)
-    } else {
-      mm <- outer(rep(1, rs), unlist(explicpars))
-      ide <- grep(colnames(par.init), paste(names(explicpars), collapse = "|"))
-      stopifnot(ncol(mm) == length(ide))
-      par.init[, ide] <- mm
-      #...
-    }
-  }
-  #TODO: DA FINIRE
-  #....
-}
-
-crr.fix.pars <- function(..., parname, value, np) {
-  .NotYetImplemented()
-  # da rifinire...
-  parnames <- c("alpha", "beta", "mu0", "sigma20", "rho", "sigma2")
-  parregex <- paste(parnames, collapse = "|")
-  nm <- stringr::str_extract_all(sprintf("(%s)([0-9]+)", parregex), ...names())
-  browser()
-  params
-}
-
 ##' @rdname llik-from-design
 ##' A partire da un *design*, crea un oggetto funzione che può essere
 ##' passato ad `optim`.
@@ -63,22 +15,24 @@ crr.fix.pars <- function(..., parname, value, np) {
 ##' @author Marco Bressan
 get.llik.from.design <- function(object, transform = TRUE, echo = 0,
                                  vcov.type = attr(object, "vcov.type")) {
-  np <- length(tt <- unique(do.call(c, object$design)))
+  np <- length(tt <- unique(do.call(c, object$design))) - 1
   fixed.default <- NULL
   if (is.null(vcov.type))
     vcov.type <- "normal"
   vcov.type <- match.vcov.type(vcov.type)
-  fixed.default <- match.vcov.fixed(vcov.type, TRUE, np - 1)
+  fixed.default <- match.vcov.fixed(vcov.type, TRUE, np)
   GETPARS <- function(params, fixed) {
     if (length(names(fixed.default)) > 0) {
       fixed[names(fixed.default)] <- fixed.default
       attributes(fixed) <- attributes(fixed.default)
     }
-    params <- crr.split.par(params, np - 1, transform = transform,
+    params <- crr.split.par(params, np, transform = transform,
                             fixed = names(fixed),
                             parlen = attr(fixed, "parlen"))
-    #params <- c(params, fixed)
-    #params <- params[match(PNAMES, names(params))]
+    if (length(fixed) > 0)
+      params <- append(fixed, params)
+    if (vcov.type != "normal")
+      return(set.vcov.params(params, np, vcov.type))
     params
   }
 
@@ -93,12 +47,9 @@ get.llik.from.design <- function(object, transform = TRUE, echo = 0,
         paste(collapse = ", ") |>
         cat("\n")
     }
-    mu <- do.call(crr.get.mu,
-                  append(list(object = object, raw = TRUE),
-                         params[c("alpha", "beta", "mu0")]))
-    Sigma <- do.call(crr.get.sigma,
-                     append(list(object = object, raw = TRUE, type = vcov.type),
-                            params[c("beta", "sigma20", "sigma2", "rho")]))
+    mu <- crr.get.mu(object, params, raw = TRUE)
+    Sigma <- crr.get.sigma(object, params, raw = TRUE)
+
     ll <- mapply(\(t, m, Si, Gi) {
       Ci <- chol(Si + Gi)
       Ci <- mvtnorm::ltMatrices(Ci[which(upper.tri(Ci, diag = TRUE))], diag = TRUE)
@@ -147,11 +98,13 @@ get.llik.from.design2 <- function(object, transform = TRUE, echo = 0,
       fixed[names(fixed.default)] <- fixed.default
       attributes(fixed) <- attributes(fixed.default)
     }
-    params <- crr.split.par(params, np - 1, transform = transform,
+    params <- crr.split.par(params, np, transform = transform,
                             fixed = names(fixed),
                             parlen = attr(fixed, "parlen"))
-    #params <- c(params, fixed)
-    #params <- params[match(PNAMES, names(params))]
+    if (length(fixed) > 0)
+      params <- append(fixed, params)
+    if (vcov.type != "normal")
+      return(set.vcov.params(params, np, vcov.type))
     params
   }
 
@@ -167,12 +120,8 @@ get.llik.from.design2 <- function(object, transform = TRUE, echo = 0,
           paste(collapse = ", ") |>
           cat("\n")
       }
-      mu <- do.call(crr.get.mu,
-                    append(list(object = object, raw = TRUE),
-                           params[c("alpha", "beta", "mu0")]))
-      Sigma <- do.call(crr.get.sigma,
-                       append(list(object = object, raw = TRUE, type = vcov.type),
-                              params[c("beta", "sigma20", "sigma2", "rho")]))
+      mu <- crr.get.mu(object, params, raw = TRUE)
+      Sigma <- crr.get.sigma(object, params, raw = TRUE)
       cholSigt <- mvtnorm::ltMatrices(
         object = mapply(\(Si, Gi) chol(Si + Gi)[which(upper.tri(Si, diag = TRUE))], Sigma, Gamma),
         diag = TRUE)
@@ -211,12 +160,8 @@ get.llik.from.design2 <- function(object, transform = TRUE, echo = 0,
           paste(collapse = ", ") |>
           cat("\n")
       }
-      mu <- do.call(crr.get.mu,
-                    append(list(object = object, raw = TRUE),
-                           params[c("alpha", "beta", "mu0")]))
-      Sigma <- do.call(crr.get.sigma,
-                       append(list(object = object, raw = TRUE, type = vcov.type),
-                              params[c("beta", "sigma20", "sigma2", "rho")]))
+      mu <- crr.get.mu(object, params, raw = TRUE)
+      Sigma <- crr.get.sigma(object, params, raw = TRUE)
       # score rispetto ai paramentri normali (mu, Sigmatilde)
       scL <- mapply(.score1mat, y, mu, Sigma, SIMPLIFY = FALSE)
       # derivata di mu in funzione di alpha, beta, mu0

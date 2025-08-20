@@ -58,16 +58,15 @@ with(mv1, cat("Esito: ", convergence, " - ",
 
 
 # confronto i parametri calcolati con l'ottimizzatore...
-param1 <- crr.split.par(mv1$par, 2)
-param1
+(param1 <- crr.split.par(mv1$par, 2))
 
 # ...con quelli in forma chiusa
-alphahat <- do.call(alpha.cf1, append(param1[c("sigma2", "beta", "sigma20", "mu0")],
+(alphahat <- do.call(alpha.cf1, append(param1[c("sigma2", "beta", "sigma20", "mu0")],
                                       list(design = toy1)))
-alphahat # alpha calcolato in forma chiusa
-sigmahat <- do.call(sigma.cf1, append(param1[c("beta", "sigma20", "mu0")],
+)# alpha calcolato in forma chiusa
+(sigmahat <- do.call(sigma.cf1, append(param1[c("beta", "sigma20", "mu0")],
                                       list(design = toy1)))
-sigmahat # sigma2 calcolato in forma chiusa
+) # sigma2 calcolato in forma chiusa
 #'
 #' Effettivamente, però, la forma della derivata (che ho calcolato con Maxima)
 #' sembrerebbe essere proprio così
@@ -116,20 +115,21 @@ mv1f <- optim(crr.remove.par(init1, names(fixpar)), \(x) -fn1(x, fixed = fixpar)
 
 # confronto tra i parametri da stima non vincolata e vincolata rispettivamente
 all.equal(crr.split.par(mv1$par, 2),
-          c(fixpar, crr.split.par(mv1f$par, 2)))
+          crr.split.par(c(fixpar[[1]], mv1f$par), 2))
 
 #' La differenza è comunque minima.
 
 c(valore_ottimo = (mv1$value),
   valore_ottimo_vincolato = mv1f$value,
-  differenza = mv1$value - mv1f$value)
+  differenza_pct = 100 * (mv1$value - mv1f$value)/mv1$value)
 #'
 #' ### Proviamo con un problema semplificato (Achana et al.)
 
 fn1 <- get.llik.from.design(toy1, echo = Inf, transform = FALSE, vcov.type = "achana")
-mv1f <- optim(crr.remove.par(init1, c("sigma2", "rho")), \(x) -fn1(x),
-              lower = crr.remove.par(attr(init1, "lower"), c("sigma2", "rho")),
-              upper = crr.remove.par(attr(init1, "upper"), c("sigma2", "rho")),
+init1a <- getInitial(toy1, vcov.type = "achana", transform = FALSE, seed = 1)
+mv1f <- optim(init1a, \(x) -fn1(x),
+              lower = attr(init1a, "lower"),
+              upper = attr(init1a, "upper"),
               method = "L-BFGS-B",
               control = list(fnscale = 1e-10, factr = 1, maxit = 1e6))
 

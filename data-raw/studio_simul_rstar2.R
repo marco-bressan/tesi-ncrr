@@ -7,16 +7,15 @@
 #'     fig-height: 10
 #' ---
 rm(list = ls())
-setwd("/home/marco/Nextcloud/tesi-ncrr/")
-#devtools::load_all()
+#setwd("/home/marco/Documenti/tesi-ncrr/")
+devtools::load_all()
 library("likelihoodAsy")
-library("tesi.ncrr")
 
 CONFLVL <- .95
 NSIM <- 250
 VCOVTYPE <- "achana"
 
-DIR <- "/home/marco/Nextcloud/output-tesi"
+DIR <- r"{../output-tesi}"
 #DIR <- "../.." # per il markdown
 #DIR <- ".." # per l'esecuzione nel pacchetto
 
@@ -55,52 +54,82 @@ psi.fun <- function(theta) {
   theta[["beta5"]]
 }
 
-save(simu.des, file = file.path(DIR, "des.rda"))
+#save(simu.des, file = file.path(DIR, "des.rda"))
 
-#| eval: false
-# simulazione
+# risultati simulazione
 lik.vals <- lik.vals2 <- numeric(NSIM)
 init <- getInitial(simu.des[[1]], vcov.type = VCOVTYPE)
 par.J <- par.J2 <- array(NA, c(length(init), length(init), NSIM))
 par.h0 <- par.stime <- par.stime2 <- par.sd <- par.sd2 <- matrix(NA, length(init), NSIM)
 psi.r <- psi.rs <- psi.stime <- psi.sd <- numeric(NSIM)
-for (k in seq_len(NSIM)) {
-  message(sprintf("%.2f%%\r", k / NSIM * 100))
+
+fs <- list.files(DIR, pattern = "^opt_")
+fnames <- do.call(rbind, strsplit(fs, "[._]"))
+dedup <- tapply(fnames[, 3], fnames[, 2], \(x) min(as.integer(x)))
+dedup.i <- match(dedup, as.integer(fnames[, 3]))
+fs <- fs[dedup.i]
+fnames <- fnames[dedup.i, ]
+for (i in seq_along(fs)) {
+  # --- RECUPERO DA DISCO ---
+  k <- as.integer(fnames[i, 2])
   llik <- get.llik.from.design(simu.des[[k]], vcov.type = VCOVTYPE, echo = 0)
-  # ------ OTTIMIZZAZIONE ----
-  #capture.output({
-  opt2 <- try(rstar(simu.des[[k]], thetainit = init, floglik = llik.fun,
-                    fpsi = psi.fun,  psival = psi.fun(init),
-                    datagen = gendat.fun, seed = 22, constr.opt = "solnp", R = 2500))
-  # fallback per Rstar
-  if (inherits(opt2, "try-error"))
-    opt2 <- try(rstar(simu.des[[k]], thetainit = simu.pars.v, floglik = llik.fun,
-                      fpsi = psi.fun,  psival = psi.fun(simu.pars.v),
-                      datagen = gendat.fun, seed = 22, constr.opt = "alabama", R = 250))
-  # ottimizzazione classica con optim
-  opt1 <- optim(init, \(x) -llik(x), method = "BFGS", hessian = TRUE)
-  #}, type = c("message"))
-  saveRDS(list(optim = opt1, likasy = opt2),
-          file = file.path(DIR, paste0("opt_", k, "_", as.integer(Sys.time()), ".rds")))
+  obj <- readRDS(file.path(DIR, fs[i]))
   # ------ REGISTRAZIONE RISULTATI ----
-  lik.vals[k] <- opt1$value
-  par.stime[, k] <- tesi.ncrr:::crr.transform.par(opt1$par, inverse = TRUE)
-  par.J[,,k] <- opt1$hessian
-  par.sd[, k] <- sqrt(diag(solve(opt1$hessian)))
-  if (inherits(opt2, "try-error")) next
-  lik.vals2[k] <- llik.fun(opt2$theta.hat, simu.des[[k]])
-  par.stime2[, k] <- tesi.ncrr:::crr.transform.par(opt2$theta.hat, inverse = TRUE)
-  par.J2[,,k] <- opt2$info.hat
-  par.sd2[, k] <- opt2$se.theta.hat
-  par.h0[, k] <- opt2$theta.hyp
+  lik.vals[k] <- obj$optim$value
+  par.stime[, k] <- tesi.ncrr:::crr.transform.par(obj$optim$par, inverse = TRUE)
+  par.J[,,k] <- obj$optim$hessian
+  par.sd[, k] <- sqrt(diag(solve(obj$optim$hessian)))
+  if (inherits(obj$likasy, "try-error")) next
+  lik.vals2[k] <- llik.fun(obj$likasy$theta.hat, simu.des[[k]])
+  par.stime2[, k] <- tesi.ncrr:::crr.transform.par(obj$likasy$theta.hat, inverse = TRUE)
+  par.J2[,,k] <- obj$likasy$info.hat
+  par.sd2[, k] <- obj$likasy$se.theta.hat
+  par.h0[, k] <- obj$likasy$theta.hyp
   # stime di psi
-  psi.r[k] <- opt2$r
-  psi.rs[k] <- opt2$rs
-  psi.stime[k] <- opt2$psi.hat
-  psi.sd[k] <- opt2$se.psi.hat
+  psi.r[k] <- obj$likasy$r
+  psi.rs[k] <- obj$likasy$rs
+  psi.stime[k] <- obj$likasy$psi.hat
+  psi.sd[k] <- obj$likasy$se.psi.hat
+  print(obj$likasy$rs)
 }
+
 dimnames(par.h0) <- dimnames(par.stime) <- dimnames(par.stime2) <-
   dimnames(par.sd) <- dimnames(par.sd2) <-
   list(pars = names(init), repl = seq_along(simu.des))
-# fine simulazione
-save.image(file.path(DIR, "sim1provv"))
+
+save.image(file.path(DIR, "..", "sim1provv"))
+
+
+
+load(file.path(DIR, "..", "sim1provv"))
+
+
+# confronti grafici
+
+#| fig-cap: >
+#|   Boxplot delle stime di massima verosimiglianza dei parametri
+#|   nelle varie replicazioni. Il "$+$" indica il valore dei veri parametri.
+par(mfrow = c(1, 2))
+apply(par.stime, 1, identity, simplify = FALSE) |>
+  boxplot()
+points(seq_len(nrow(par.stime)), do.call(c, simu.pars), cex = 2.5, col = "blue", pch = 4)
+apply(par.stime2, 1, identity, simplify = FALSE) |>
+  boxplot()
+points(seq_len(nrow(par.stime)), do.call(c, simu.pars), cex = 2.5, col = "blue", pch = 4)
+
+
+all.equal(par.stime[!is.na(par.stime2)], par.stime2[!is.na(par.stime2)])
+
+apply(par.stime2 - par.stime, 1, identity, simplify = FALSE) |>
+  boxplot()
+cbind(lik.vals2, -lik.vals)
+boxplot(lik.vals2 + lik.vals)
+
+all.equal(par.J[-which(is.na(par.J2))], par.J2[-which(is.na(par.J2))])
+
+
+# normalità di r e rstar
+
+curve(dnorm(x), from = -10, to = 10, col = "red")
+psi.r |> density() |> lines()
+psi.rs |> na.omit() |> density() |> lines(col = "blue")
