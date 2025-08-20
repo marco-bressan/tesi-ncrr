@@ -26,10 +26,10 @@ simulate.ncrr.design <- function(object, nsim = 1, seed = rpois(1, 1e5),
   ds <- object$x
   if (missing(params))
     params <- list(...)
-  mu <- do.call(crr.get.mu, append(list(object, raw = TRUE), params))
+  params <- set.vcov.params(params, vcov.type = vcov.type)
+  mu <- crr.get.mu(object, params, raw = TRUE)
   #browser()
-  Sigma <- do.call(crr.get.sigma,
-                   append(list(object, raw = TRUE, type = vcov.type), params))
+  Sigma <- crr.get.sigma(object, params, raw = TRUE)
   theta <- mapply(\(m, S) t(rmvnorm(nsim, m, S)), mu, Sigma, SIMPLIFY = FALSE)
   theta <- do.call(rbind, theta)
   pik <- exp(theta) / (1 + exp(theta))

@@ -13,8 +13,8 @@ devtools::load_all()
 CONFLVL <- .95
 NSIM <- 250
 VCOVTYPE <- "achana"
-DIR <- "../.." # per il markdown
-#DIR <- ".." # per l'esecuzione nel pacchetto
+#DIR <- "../.." # per il markdown
+DIR <- ".." # per l'esecuzione nel pacchetto
 
 #' # Simulazione basata sul problema di achana
 #| warning: false
@@ -26,10 +26,8 @@ simu.pars <- list(alpha = c(0.53118984013899, 1.0431973777787, 0.004342312423845
                   mu0 = 0.81098898311333,
                   sigma20 = 2.63212049308308,
                   sigma2 = 5.69469982077026) # stime MV dai dati originali
-simu.des <- do.call(simulate,
-                    append(list(ncrr.design(smoke.alarm), vcov.type = VCOVTYPE,
-                                nsim = NSIM),
-                           simu.pars))
+simu.des <- simulate(ncrr.design(smoke.alarm), vcov.type = VCOVTYPE,
+                     nsim = NSIM, params = simu.pars)
 #| eval: false
 # simulazione
 lik.vals <- lik.vals2 <- numeric(NSIM)

@@ -45,39 +45,6 @@ print.ncrr.design <- function(x, ...) {
   cat("\n")
 }
 
-match.vcov.type <- function(type = c("normal", "achana", "equivar", "simple")) {
-  match.arg(type, several.ok = FALSE)
-}
-
-match.vcov.fun <- function(type) {
-  type <- match.vcov.type(type)
-  if (type == "normal")
-    return(crr.vcov)
-  get(paste("crr.vcov", type, sep = "."), envir = asNamespace("tesi.ncrr"))
-}
-
-match.vcov.fixed <- function(type, value = FALSE, np) {
-  type <- match.vcov.type(type)
-  ff <- switch(type, achana = "rho", equivar = "sigma2", simple = c("rho", "sigma2"))
-  if (isTRUE(value)) {
-    ff <- as.list(setNames(nm = ff))
-    if (type == "simple") {
-      ff[["sigma2"]] <- rep(NA, np)
-      ff[["rho"]] <- NA
-    } else if (type == "achana") {
-      ff[["rho"]] <- .5
-    } else if (type == "equivar") {
-      ff[["sigma2"]] <- rep(NA, np)
-    }
-  }
-  if (type == "achana") {
-    attr(ff, "parlen") <- c("sigma2" = 1)
-  }
-  ff
-}
-
-
-
 #' @export
 #' @method subset ncrr.design
 subset.ncrr.design <- function(x, subset, ...) {
@@ -96,89 +63,6 @@ subset.ncrr.design <- function(x, subset, ...) {
   return(x)
 }
 
-crr.get.sigma <- function(object, ..., raw = FALSE,
-                          type) {
-  dd <- object$design
-  type <- match.vcov.type(type)
-  vcovfn <- match.vcov.fun(type)
-  #stopifnot("Baseline != 0 ancora da implementare!" = sapply(dd, \(d) d[1] == 0))
-  dunique <- unique(dd)
-  #browser()
-  Sigmal <- lapply(dunique, \(d) {
-    psel <- par.select.multi(d, ...)
-    psel[["design"]] <- d
-    V <- do.call(vcovfn, psel)
-    if (anyNA(V)) stop("Na rilevati nel calcolo di sigma!") # togliere per efficientamento
-    V
-  })
-  if (raw)
-    return(Sigmal[match(dd, dunique)])
-  blockdiag(Sigmal[match(dd, dunique)])
-}
-
-crr.get.mu <- function(object, ..., raw = FALSE) {
-  dd <- object$design
-  #stopifnot("Baseline != 0 ancora da implementare!" = sapply(dd, \(d) d[1] == 0))
-  dunique <- unique(dd)
-  #browser()
-  mul <- lapply(dunique, \(d) {
-    #if (!0 %in% d) browser()
-    psel <- par.select.multi(d, ...)
-    psel[["design"]] <- d
-    do.call(crr.mean.baseline0, psel)
-  })
-  if (raw)
-    return(mul[match(dd, dunique)])
-  do.call(c, mul[match(dd, dunique)])
-}
-
-par.select.multi <- function(object, ...) {
-  lapply(list(...), \(x) if (length(x) == 1) x else x[setdiff(object, 0)])
-}
-
-crr.get.Gamma <- function(object, ..., raw = FALSE) {
-  if (!raw)
-    return(diag(object$gamma))
-  lc <- cumsum(ll <- lengths(object$design))
-  lc <- c(0, lc[-length(lc)])
-  mapply(\(pos, len) diag(object$gamma[(pos + 1):(pos + len)]),
-         lc, ll, SIMPLIFY = FALSE)
-}
-
-crr.get.theta <- function(object, ..., raw = FALSE) {
-  if (!raw)
-    return(object$theta)
-  lc <- cumsum(ll <- lengths(object$design))
-  lc <- c(0, lc[-length(lc)])
-  mapply(\(pos, len) object$theta[(pos + 1):(pos + len)],
-         lc, ll, SIMPLIFY = FALSE)
-}
-
-##' L'uso della presente è confinato alle funzioni che calcolano i
-##' parametri esplicitamente, contenute nella dir `data-raw/`
-##'
-##' @title Ottieni matrici dal design
-##' @param object design di uno studio ncrr
-##' @param what al momento solo "theta" o "gamma"
-##' @return matrice di interesse (quella dei gamma o dei theta) in un
-##'   formato che sia compatibile con la notazione usata in maxima nel calcolo
-##'   delle derivate esplicite.
-##' @author Marco Bressan
-get.matrix.from.design <- function(object, what = c("theta", "gamma")) {
-  what <- match.arg(what, several.ok = FALSE)
-  stopifnot("passato oggetto non valido" = length(ll <- lengths(object$design)) > 0,
-            "alcuni design sono nulli" = ll != 0)
-  maxd <- max(unlist(object$design))
-  mm <- matrix(NA, maxd + 1, length(object$design))
-  for (i in seq_along(ll)) {
-    mm[object$design[[i]] + 1, i] <- 1
-  }
-  stopifnot("lunghezza di `what` non compatibile" =
-              sum(mm, na.rm = TRUE) == length(object[[what]]))
-  mm[!is.na(mm)] <- object[[what]]
-  t(mm)
-}
-
 
 #' Parametri iniziali per l'ottimizzatore della verosimiglianza NCRR
 #'
@@ -189,17 +73,20 @@ get.matrix.from.design <- function(object, what = c("theta", "gamma")) {
 ##' @param ... Non usati
 ##' @param eps Tolleranza numerica per lo 0
 ##' @param seed Seme per la generazione di un punto di partenza casuale. Se si
-##'   passa un singolo NA, il comportamento è completamente casuale e non
-##'   riproducibile. Può essere un vettore con nomi dei parametri `c(alpha,
+##'   passa un singolo valore, esso viene usato per la generazione di un seed diverso
+##'   per ogni parametro (con NA tale generazione è casuale).
+##'   Può essere un vettore con nomi dei parametri `c(alpha,
 ##'   beta, mu0, sigma20, rho, sigma2)`: per specificare quali NON
 ##'   inizializzare casualmente, mettere NA.
-##' @param rep numero di random start
+##'   Impostando `seed` a `NULL`, la funzione ritorna dei valori di default, deterministici.
+##' @param rep numero di random start. Ignorato se il `seed` è `NULL`
 ##' @param transform applica le trasformazioni ai parametri?
 ##' @param fixed elenco di nomi di parametri fissati (cioè esclusi dal vettore/matrice)
 ##' @param vcov.type preimpostazioni sui parametri fixed
 ##'
 ##' @return un vettore o una matrice con i punti di partenza casuali (se rep>1)
-getInitial.ncrr.design <- function(object, data, ..., eps = 1e-10, seed = NA,
+getInitial.ncrr.design <- function(object, data, ..., eps = 1e-10,
+                                   seed = if (rep > 1) NA,
                                    rep = 1, transform = TRUE,
                                    fixed = NULL,
                                    vcov.type = "normal") {
@@ -218,7 +105,7 @@ getInitial.ncrr.design <- function(object, data, ..., eps = 1e-10, seed = NA,
                  parls,
                  SIMPLIFY = FALSE)
   #browser()
-  if (rep > 1) {
+  if (!is.null(seed)) {
     #TODO: al momento rho è fuori scala. per semplicità si può operare sul logit e log per la varianza
     if (!is.null(names(seed))) {
       seed.old <- seed
@@ -251,7 +138,9 @@ getInitial.ncrr.design <- function(object, data, ..., eps = 1e-10, seed = NA,
       grepl("sigma", names(init)[iidx], fixed = TRUE),
       SIMPLIFY = FALSE
     )
-
+    if (vcov.type == "achana") {
+      init$sigma2 <- init$sigma2[, 1]
+    }
     #browser()
     init <- drop(do.call(cbind, init))
   } else {
@@ -267,12 +156,13 @@ getInitial.ncrr.design <- function(object, data, ..., eps = 1e-10, seed = NA,
                               mu0 = Inf, sigma20 = Inf, rho = 1,
                               sigma2 = Inf)[names(parls)],
                     parls)
-    if (!is.null(fixed)) {
+    if (!is.null(names(fixed))) {
       lower <- lower[-match(names(fixed), names(lower))]
       upper <- upper[-match(names(fixed), names(upper))]
     }
   }
   structure(init,
             lower = unlist(lower),
-            upper = unlist(upper))
+            upper = unlist(upper),
+            seed = seed)
 }

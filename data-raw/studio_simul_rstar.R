@@ -7,7 +7,7 @@
 #'     fig-height: 10
 #' ---
 rm(list = ls())
-setwd("/home/marco/Documenti/tesi-ncrr/")
+setwd("/home/marco/Nextcloud/tesi-ncrr/")
 #devtools::load_all()
 library("likelihoodAsy")
 library("tesi.ncrr")
@@ -16,7 +16,7 @@ CONFLVL <- .95
 NSIM <- 250
 VCOVTYPE <- "achana"
 
-DIR <- "/home/marco/output-tesi"
+DIR <- "/home/marco/Nextcloud/output-tesi"
 #DIR <- "../.." # per il markdown
 #DIR <- ".." # per l'esecuzione nel pacchetto
 
@@ -63,7 +63,7 @@ lik.vals <- lik.vals2 <- numeric(NSIM)
 init <- getInitial(simu.des[[1]], vcov.type = VCOVTYPE)
 par.J <- par.J2 <- array(NA, c(length(init), length(init), NSIM))
 par.h0 <- par.stime <- par.stime2 <- par.sd <- par.sd2 <- matrix(NA, length(init), NSIM)
-psi.rs <- psi.stime <- psi.sd <- numeric(NSIM)
+psi.r <- psi.rs <- psi.stime <- psi.sd <- numeric(NSIM)
 for (k in seq_len(NSIM)) {
   message(sprintf("%.2f%%\r", k / NSIM * 100))
   llik <- get.llik.from.design(simu.des[[k]], vcov.type = VCOVTYPE, echo = 0)
@@ -71,7 +71,7 @@ for (k in seq_len(NSIM)) {
   #capture.output({
   opt2 <- try(rstar(simu.des[[k]], thetainit = init, floglik = llik.fun,
                     fpsi = psi.fun,  psival = psi.fun(init),
-                    datagen = gendat.fun, seed = 22, constr.opt = "solnp", R = 250))
+                    datagen = gendat.fun, seed = 22, constr.opt = "solnp", R = 2500))
   # fallback per Rstar
   if (inherits(opt2, "try-error"))
     opt2 <- try(rstar(simu.des[[k]], thetainit = simu.pars.v, floglik = llik.fun,
@@ -94,6 +94,7 @@ for (k in seq_len(NSIM)) {
   par.sd2[, k] <- opt2$se.theta.hat
   par.h0[, k] <- opt2$theta.hyp
   # stime di psi
+  psi.r[k] <- opt2$r
   psi.rs[k] <- opt2$rs
   psi.stime[k] <- opt2$psi.hat
   psi.sd[k] <- opt2$se.psi.hat

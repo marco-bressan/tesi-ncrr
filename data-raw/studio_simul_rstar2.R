@@ -15,7 +15,7 @@ CONFLVL <- .95
 NSIM <- 250
 VCOVTYPE <- "achana"
 
-DIR <- r"{C:\Users\marco\Nextcloud\output-tesi}"
+DIR <- r"{../output-tesi}"
 #DIR <- "../.." # per il markdown
 #DIR <- ".." # per l'esecuzione nel pacchetto
 
@@ -54,19 +54,18 @@ psi.fun <- function(theta) {
   theta[["beta5"]]
 }
 
-save(simu.des, file = file.path(DIR, "des.rda"))
+#save(simu.des, file = file.path(DIR, "des.rda"))
 
-#| eval: false
-# simulazione
+# risultati simulazione
 lik.vals <- lik.vals2 <- numeric(NSIM)
 init <- getInitial(simu.des[[1]], vcov.type = VCOVTYPE)
 par.J <- par.J2 <- array(NA, c(length(init), length(init), NSIM))
 par.h0 <- par.stime <- par.stime2 <- par.sd <- par.sd2 <- matrix(NA, length(init), NSIM)
-psi.rs <- psi.stime <- psi.sd <- numeric(NSIM)
+psi.r <- psi.rs <- psi.stime <- psi.sd <- numeric(NSIM)
 
 fs <- list.files(DIR, pattern = "^opt_")
 fnames <- do.call(rbind, strsplit(fs, "[._]"))
-dedup <- tapply(fnames[, 3], fnames[, 2], \(x) max(as.integer(x)))
+dedup <- tapply(fnames[, 3], fnames[, 2], \(x) min(as.integer(x)))
 dedup.i <- match(dedup, as.integer(fnames[, 3]))
 fs <- fs[dedup.i]
 fnames <- fnames[dedup.i, ]
@@ -87,18 +86,22 @@ for (i in seq_along(fs)) {
   par.sd2[, k] <- obj$likasy$se.theta.hat
   par.h0[, k] <- obj$likasy$theta.hyp
   # stime di psi
+  psi.r[k] <- obj$likasy$r
   psi.rs[k] <- obj$likasy$rs
   psi.stime[k] <- obj$likasy$psi.hat
   psi.sd[k] <- obj$likasy$se.psi.hat
+  print(obj$likasy$rs)
 }
 
 dimnames(par.h0) <- dimnames(par.stime) <- dimnames(par.stime2) <-
   dimnames(par.sd) <- dimnames(par.sd2) <-
   list(pars = names(init), repl = seq_along(simu.des))
 
-save.image(file.path(DIR, "sim1provv"))
+save.image(file.path(DIR, "..", "sim1provv"))
 
-par.stime
+
+
+load(file.path(DIR, "..", "sim1provv"))
 
 
 # confronti grafici
@@ -114,9 +117,19 @@ apply(par.stime2, 1, identity, simplify = FALSE) |>
   boxplot()
 points(seq_len(nrow(par.stime)), do.call(c, simu.pars), cex = 2.5, col = "blue", pch = 4)
 
+
+all.equal(par.stime[!is.na(par.stime2)], par.stime2[!is.na(par.stime2)])
+
 apply(par.stime2 - par.stime, 1, identity, simplify = FALSE) |>
   boxplot()
 cbind(lik.vals2, -lik.vals)
-lik.vals2 + lik.vals |> boxplot()
+boxplot(lik.vals2 + lik.vals)
 
 all.equal(par.J[-which(is.na(par.J2))], par.J2[-which(is.na(par.J2))])
+
+
+# normalità di r e rstar
+
+curve(dnorm(x), from = -10, to = 10, col = "red")
+psi.r |> density() |> lines()
+psi.rs |> na.omit() |> density() |> lines(col = "blue")
