@@ -87,12 +87,12 @@ get.llik.from.design2 <- function(object, transform = TRUE, echo = 0,
                                  vcov.type = attr(object, "vcov.type")) {
   stopifnot("Tutti gli studi devono confrontare esattamente due trattamenti!" =
               lengths(object$design) == 2)
-  np <- length(tt <- unique(do.call(c, object$design)))
+  np <- length(tt <- unique(do.call(c, object$design))) - 1
   fixed.default <- NULL
   if (is.null(vcov.type))
     vcov.type <- "normal"
   vcov.type <- match.vcov.type(vcov.type)
-  fixed.default <- match.vcov.fixed(vcov.type, TRUE, np - 1)
+  fixed.default <- match.vcov.fixed(vcov.type, TRUE, np)
   GETPARS <- function(params, fixed) {
     if (length(names(fixed.default)) > 0) {
       fixed[names(fixed.default)] <- fixed.default
@@ -107,6 +107,8 @@ get.llik.from.design2 <- function(object, transform = TRUE, echo = 0,
       return(set.vcov.params(params, np, vcov.type))
     params
   }
+  sctrans <- list(sigma = \(x) exp(x),
+                  rho = \(x) 4 * exp(2*x) / (exp(2*x) + 1)^2)
 
   # questo è il return, la funzione obiettivo e la sua score come attributo
   structure(
@@ -153,6 +155,8 @@ get.llik.from.design2 <- function(object, transform = TRUE, echo = 0,
     score = function(params, y = crr.get.theta(object, raw = TRUE),
                      Gamma = crr.get.Gamma(object, raw = TRUE),
                      fixed = NULL) {
+      onames <- names(params)
+      opars <- params
       params <- GETPARS(params, fixed)
       if (echo > 1) {
         mapply( \(x, nm) paste(nm, "=", deparse1(round(x, 6))),
@@ -165,23 +169,27 @@ get.llik.from.design2 <- function(object, transform = TRUE, echo = 0,
       # score rispetto ai paramentri normali (mu, Sigmatilde)
       scL <- mapply(.score1mat, y, mu, Sigma, SIMPLIFY = FALSE)
       # derivata di mu in funzione di alpha, beta, mu0
-      scmu <- do.call(crr.get.scmu,
-                      append(list(object = object),
-                             params[c("beta", "mu0")]))
+      scmu <- crr.get.scmu(object, params)
       # derivata di Sigmatilde in funzione di beta, sigma20, rho, sigma2
-      scSigt <- do.call(crr.get.scSigma,
-                        append(list(object = object),
-                               params[c("beta", "sigma20", "rho", "sigma2")]))
+      scSigt <- crr.get.scSigma(object, params)
       # regola del concatenamento (funziona anche per le matrici?!)
       sc <- mapply(\(scLi, scmui, scSigti) {
-        c(alpha = crossprod(scLi$mu, scmui$alpha),
+        ret <- c(alpha = crossprod(scLi$mu, scmui$alpha),
           beta = crossprod(scLi$mu, scmui$beta),
           mu0 = crossprod(scLi$mu, scmui$mu0),
           sigma20 = crossprod(c(scLi$Sigma), c(scSigti$sigma20)),
           rho = crossprod(c(scLi$Sigma), c(scSigti$rho)),
           sigma2 = crossprod(c(scLi$Sigma), apply(scSigti$sigma2, 3, c)))
           # dimensioni:    n_i x (k_i)^2  ,   (k_i)^2 x dim(sigma2)
+        if (isTRUE(transform)) { # derivata della trasformazione
+          spars.ind <- grep("sigma", names(ret), value = TRUE)
+          ret[spars.ind] <- ret[spars.ind] * sctrans$sigma(opars[spars.ind])
+          ret["rho"] <- sctrans$rho(ret["rho"])
+        }
+        ret
       }, scL, scmu, scSigt)
+      if (!is.null(onames))
+        sc <- sc[onames, ] # toglie parametri inutili tipo rho per "achana"
       return(rowSums(sc))
     }
   )
@@ -189,13 +197,32 @@ get.llik.from.design2 <- function(object, transform = TRUE, echo = 0,
 
 .score1mat <- function(tt, mu, Sigma) {
   Scinv <- solve(Sigma)
-  # score analitica per la media gaussiana V^(-1) sum(y_j - mu)
   scmu <- Scinv %*% (tt - mu)
   # score analitica per la varianza gaussiana
   scQ <- Scinv %*% tcrossprod(tt - mu) %*% Scinv
   scoreS <- -Scinv + 0.5 * diag(diag(Scinv)) + scQ - 0.5 * diag(diag(scQ))
   list(mu = scmu, Sigma = scoreS)
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 ##' Verosimiglianza per un singolo studio per NCRR __con baseline__.

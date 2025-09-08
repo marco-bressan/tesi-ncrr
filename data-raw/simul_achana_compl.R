@@ -19,7 +19,6 @@ rm(list = ls())
 #| output: false
 devtools::load_all(".")
 data("smoke.alarm")
-smoke.alarm$tik <- with(smoke.alarm, log(rik) - log(pmax(nik - rik, .001)))
 
 # specifico il design della meta-analisi
 des <- ncrr.design(smoke.alarm)
@@ -32,13 +31,36 @@ des <- ncrr.design(smoke.alarm)
 # solo i design che contengono lo zero
 #des <- subset(des, which(sapply(des$design, \(x) 0 %in% x)))
 
-opt.fn <- get.llik.from.design(des, vcov.type = "achana", echo = 0)
+confronta.gr <- function(x, fn, perf = FALSE) {
+  numgr <- numDeriv::grad(fn, x)
+  gr <- attr(fn, "score")(x)
+  if (perf)
+    perf <- microbenchmark::microbenchmark(
+      numgr = numDeriv::grad(fn, x),
+      gr = attr(fn, "score")(x),
+      times = 20
+    )
+  print(perf)
+  cat("\n========================\n")
+  cat("Differenze:", paste("\t-", all.equal(numgr, gr)), sep = "\n")
+  cat("\n========================\n")
+  cbind(x = x, numgr = numgr, gr = gr)
+}
+
+opt.fn <- get.llik.from.design2(des, vcov.type = "achana", echo = 0)
 opt1 <- optim(ini1 <- getInitial(des, vcov.type = "achana"),
               \(x) -opt.fn(x), method = "BFGS")
 crr.split.par(opt1$par, 6, transform = TRUE, fixed = match.vcov.fixed("achana"))
 
 #mettere come primo passo
-opt2 <- optim(opt1$par, \(x) -opt.fn(x), method = "Nelder-Mead")
+ini12 <- getInitial(des, vcov.type = "achana", seed = 2)
+confronta.gr(ini1, opt.fn, perf = F)
+confronta.gr(ini12, opt.fn, perf = F)
+confronta.gr(opt1$par, opt.fn, perf = F)
+
+opt2 <- optim(ini1, \(x) -opt.fn(x), method = "BFGS", gr = \(x) -1e-7 * attr(opt.fn, "score")(x))
+confronta.gr(opt2$par, opt.fn, perf = F)
+nlminb(ini1, \(x) -opt.fn(x), gradient = \(x) -1e-7 * attr(opt.fn, "score")(x)) # false convergence
 crr.split.par(opt2$par, 6, transform = TRUE, fixed = match.vcov.fixed("achana"))
 
 #'
@@ -53,30 +75,29 @@ cbind(par = crr.transform.par(opt2$par, np = 6, split = FALSE,
       ) |>
   round(4)
 
-opt.fn <- get.llik.from.design(des, vcov.type = "normal")
-as.list(environment(opt.fn))
-opt1 <- optim(getInitial(des, vcov.type = "normal", transform = TRUE),
+opt.fn <- get.llik.from.design(des, vcov.type = "normal", echo = 4, transform = TRUE)
+opt1 <- optim(ini2 <- getInitial(des, vcov.type = "normal", transform = TRUE),
               \(x) -opt.fn(x), method = "BFGS")
 #crr.split.par(opt1$par, 5, transform = TRUE)
 
-opt2 <- optim(opt1$par, \(x) -opt.fn(x), method = "Nelder-Mead")
-#crr.split.par(opt2$par, 5, transform = TRUE)
+opt2 <- optim(ini2, \(x) -opt.fn(x), method = "Nelder-Mead")
+crr.split.par(opt2$par, 6, transform = TRUE)
 
 opt2h <- optimHess(opt2$par, \(x) -opt.fn(x))
-cbind(crr.transform.par(opt2$par, np = 6, split = FALSE, inverse = TRUE)[-15],
-      opt2h[-15, ][, -15] |>
+cbind(crr.transform.par(opt2$par, np = 6, split = FALSE, inverse = TRUE),
+      opt2h |>
         solve() |>
         diag() |>
         sqrt()) |>
   round(4)
 
 opt.fn <- get.llik.from.design(des, vcov.type = "simple")
-opt1 <- optim(getInitial(des, vcov.type = "simple"),
+opt1 <- optim(ini3 <- getInitial(des, vcov.type = "simple"),
               \(x) -opt.fn(x), method = "BFGS")
-crr.split.par(opt1$par, 5, transform = TRUE, fixed = match.vcov.fixed("simple"))
+crr.split.par(opt1$par, 6, transform = TRUE, fixed = match.vcov.fixed("simple"))
 
 opt2h <- optimHess(opt1$par, \(x) -opt.fn(x))
-cbind(crr.transform.par(opt1$par, np = 5, split = FALSE,
+cbind(crr.transform.par(opt1$par, np = 6, split = FALSE,
                         inverse = TRUE, fixed = match.vcov.fixed("simple"))[-13],
       opt2h |>
         solve() |>

@@ -169,14 +169,19 @@ crr.split.par <- function(params, np, transform = FALSE, fixed = NULL,
     if (max(pposs) != ncol(params)) {
       print((pposs))
       print(colnames(params))
-      stop("`params` has wrong dimesion!")
+      if (!is.null(names(params)) && length(ga <- grep("alpha", names(params))) != np)
+        warning(sprintf("Set np to %s, but dim(alpha) = %s", np, length(gg)))
+      #... funzione per controllo lunghezza parametri
+      stop("`params` has wrong dimesion ",
+           sprintf("(expected %d, got %d)", max(pposs), ncol(params)))
     }
     extrfn <- \(x, i) x[, i]
   } else {
     if (max(pposs) != length(params)) {
       print((pposs))
       print(names(params))
-      stop("`params` has wrong dimesion!")
+      stop("`params` has wrong dimesion ",
+           sprintf("(expected %d, got %d)", max(pposs), length(params)))
     }
     extrfn <- \(x, i) x[i]
   }
@@ -209,8 +214,8 @@ crr.join.par <- function(params, ..., transform = FALSE) {
 fisher.corr <- function() {
   list(
     link = "pearson",
-    linkfun = function(mu) log(1 + mu) - log(1 - mu),
-    linkinv = function(eta) (exp(eta) - 1) / (exp(eta) + 1)
+    linkfun = function(mu) 0.5 * log(1 + mu) - log(1 - mu),
+    linkinv = function(eta) (exp(2 * eta) - 1) / (exp(2 * eta) + 1)
   )
 }
 

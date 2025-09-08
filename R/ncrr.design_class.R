@@ -99,7 +99,7 @@ getInitial.ncrr.design <- function(object, data, ..., eps = 1e-10,
                        lengths = TRUE)
   init <- mapply(rep, list(alpha = 0,
                            beta = 1,
-                           mu0 = 0, sigma20 = 1 - isTRUE(transform), rho = 0,
+                           mu0 = 0.5, sigma20 = 1 - isTRUE(transform), rho = 0,
                            sigma2 = 1 - isTRUE(transform))[names(parls)],
                  parls,
                  SIMPLIFY = FALSE)
