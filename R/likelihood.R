@@ -82,9 +82,9 @@ get.llik.from.design <- function(object, transform = TRUE, echo = 0,
   }
 
   # questo è il return,  la funzione obiettivo
-  function(params, y = crr.get.theta(object, raw = TRUE),
-           Gamma = crr.get.Gamma(object, raw = TRUE),
-           fixed = NULL) {
+  function(params, data = object, fixed = NULL) {
+    y <- crr.get.theta(data, raw = TRUE)
+    Gamma <- crr.get.Gamma(data, raw = TRUE)
     params <- GETPARS(params, fixed)
     if (echo > 1) {
       mapply( \(x, nm) paste(nm, "=", deparse1(round(x, 6))),

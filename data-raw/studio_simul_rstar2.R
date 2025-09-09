@@ -15,9 +15,9 @@ CONFLVL <- .95
 NSIM <- 250
 VCOVTYPE <- "achana"
 
-DIR <- r"{C:\Users\marco\Nextcloud\output-tesi}"
+#DIR <- r"{C:\Users\marco\Nextcloud\output-tesi}"
 #DIR <- "../.." # per il markdown
-#DIR <- ".." # per l'esecuzione nel pacchetto
+DIR <- "../output-tesi" # per l'esecuzione nel pacchetto
 
 #' # Simulazione basata sul problema di achana
 #| warning: false
@@ -95,7 +95,6 @@ for (i in seq_along(fs)) {
 dimnames(par.h0) <- dimnames(par.stime) <- dimnames(par.stime2) <-
   dimnames(par.sd) <- dimnames(par.sd2) <-
   list(pars = names(init), repl = seq_along(simu.des))
-
 save.image(file.path(DIR, "sim1provv"))
 
 par.stime

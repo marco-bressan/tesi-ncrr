@@ -7,8 +7,8 @@
 #'     fig-height: 10
 #' ---
 rm(list = ls())
-setwd("/home/marco/Documenti/tesi-ncrr/")
-#devtools::load_all()
+#setwd("/home/marco/Documenti/tesi-ncrr/")
+devtools::load_all()
 library("likelihoodAsy")
 library("tesi.ncrr")
 
@@ -16,17 +16,17 @@ CONFLVL <- .95
 NSIM <- 250
 VCOVTYPE <- "achana"
 
-DIR <- "/home/marco/output-tesi"
+#DIR <- "/home/marco/output-tesi"
 #DIR <- "../.." # per il markdown
-#DIR <- ".." # per l'esecuzione nel pacchetto
+DIR <- "../output-tesi/" # per l'esecuzione nel pacchetto
 
 #' # Simulazione basata sul problema di achana
 #| warning: false
 simu.pars <- list(alpha = c(0.53118984013899, 1.0431973777787, 0.00434231242384523,
                             2.36407165618289, 2.66293182986318, 2.7339581049579),
                   beta = c(0.948918313002282,
-                           1.02425107553256, 1.06604309779969, 0.240340161234799, 0.179383944934584,
-                           0.179378353526596),
+                           1.02425107553256, 1.06604309779969, 0.240340161234799,
+                           0.179383944934584, 0.179378353526596),
                   mu0 = 0.81098898311333,
                   sigma20 = 2.63212049308308,
                   sigma2 = 5.69469982077026) # stime MV dai dati originali
@@ -35,21 +35,10 @@ simu.des <- do.call(simulate,
                                 nsim = NSIM, seed = 212),
                            simu.pars))
 simu.pars.v <- tesi.ncrr:::crr.join.par(simu.pars) |> tesi.ncrr:::crr.transform.par()
-llik.fun <- function(theta, data) {
-  y = tesi.ncrr:::crr.get.theta(data, raw = TRUE)
-  Gamma = tesi.ncrr:::crr.get.Gamma(data, raw = TRUE)
-  L <- llik(theta, y = y, Gamma = Gamma)
-  # if (!is.finite(L)) {
-  #   environment(llik)$echo <- 3
-  #   browser()
-  #   llik(theta, y = y, Gamma = Gamma)
-  # }
-  return(L)
-}
 gendat.fun <- function(theta, data) {
   theta <- tesi.ncrr:::crr.split.par(theta, length(data$treatments) - 1, transform = TRUE,
                          fixed = tesi.ncrr:::match.vcov.fixed(attr(data, "vcov.type")))
-  suppressMessages(simulate(data, params = theta, seed = 342)[[1]]) # estraggo solo il design, non tutta la lista
+  suppressMessages(tesi.ncrr:::simulate.ncrr.design(data, params = theta, seed = 342)[[1]]) # estraggo solo il design, non tutta la lista
 }
 psi.fun <- function(theta) {
   theta[["beta5"]]
@@ -66,20 +55,17 @@ par.h0 <- par.stime <- par.stime2 <- par.sd <- par.sd2 <- matrix(NA, length(init
 psi.rs <- psi.stime <- psi.sd <- numeric(NSIM)
 for (k in seq_len(NSIM)) {
   message(sprintf("%.2f%%\r", k / NSIM * 100))
-  llik <- get.llik.from.design(simu.des[[k]], vcov.type = VCOVTYPE, echo = 0)
+  llik.fun <- get.llik.from.design(simu.des[[k]], vcov.type = VCOVTYPE, echo = 0)
   # ------ OTTIMIZZAZIONE ----
-  #capture.output({
-  opt2 <- try(rstar(simu.des[[k]], thetainit = init, floglik = llik.fun,
-                    fpsi = psi.fun,  psival = psi.fun(init),
-                    datagen = gendat.fun, seed = 22, constr.opt = "solnp", R = 250))
-  # fallback per Rstar
-  if (inherits(opt2, "try-error"))
-    opt2 <- try(rstar(simu.des[[k]], thetainit = simu.pars.v, floglik = llik.fun,
-                      fpsi = psi.fun,  psival = psi.fun(simu.pars.v),
-                      datagen = gendat.fun, seed = 22, constr.opt = "alabama", R = 250))
-  # ottimizzazione classica con optim
-  opt1 <- optim(init, \(x) -llik(x), method = "BFGS", hessian = TRUE)
-  #}, type = c("message"))
+  opt1 <- optim(init, \(x) -llik.fun(x), method = "BFGS", hessian = TRUE)
+  for (R in as.integer(300*exp(1:3))){
+    message("--> R = ", R)
+    opt22 <- try(crr.rstar(simu.des[[k]], thetainit = init, floglik = llik.fun,
+                      fpsi = psi.fun,  psival = psi.fun(init),
+                      datagen = gendat.fun, seed = 22, constr.opt = "solnp", R = R,
+                      parallel = TRUE, trace = Inf))
+    if (!inherits(opt2, "try-error") && is.finite(opt2$rs)) break
+  }
   saveRDS(list(optim = opt1, likasy = opt2),
           file = file.path(DIR, paste0("opt_", k, "_", as.integer(Sys.time()), ".rds")))
   # ------ REGISTRAZIONE RISULTATI ----
