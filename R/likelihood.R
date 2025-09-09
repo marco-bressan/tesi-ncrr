@@ -1,138 +1,39 @@
-##' @rdname llik-from-design
-##' A partire da un *design*, crea un oggetto funzione che può essere
-##' passato ad `optim`.
-##'
-##' @export
-##' @title Funzione per la definizione della verosimiglianza per NCRR.
-##' @param object oggetto che definisce il design
-##' @param transform applica trasformazioni ai parametri di
-##'   varianza/correlazione
-##' @param echo regola il livello delle stampe di debug
-##' @param vcov.type struttura della matrice di varianza-covarianza.
-##' @return una funzione del vettore dei parametri (in tal senso `llik1` ne
-##'   costituisce una versione semplificata), con la possibilità di fissare gli
-##'   stessi (opzione `fixed = list(...)`)
-##' @author Marco Bressan
-get.llik.from.design <- function(object, transform = TRUE, echo = 0,
-                                 vcov.type = attr(object, "vcov.type")) {
-  np <- length(tt <- unique(do.call(c, object$design))) - 1
-  fixed.default <- NULL
-  if (is.null(vcov.type))
-    vcov.type <- "normal"
-  vcov.type <- match.vcov.type(vcov.type)
-  fixed.default <- match.vcov.fixed(vcov.type, TRUE, np)
-  GETPARS <- function(params, fixed) {
-    if (length(names(fixed.default)) > 0) {
-      fixed[names(fixed.default)] <- fixed.default
-      attributes(fixed) <- attributes(fixed.default)
-    }
-    params <- crr.split.par(params, np, transform = transform,
-                            fixed = names(fixed),
-                            parlen = attr(fixed, "parlen"))
-    if (length(fixed) > 0)
-      params <- append(fixed, params)
-    if (vcov.type != "normal")
-      return(set.vcov.params(params, np, vcov.type))
-    params
-  }
-
-  # questo è il return,  la funzione obiettivo
-  function(params, y = crr.get.theta(object, raw = TRUE),
-           Gamma = crr.get.Gamma(object, raw = TRUE),
-           fixed = NULL) {
-    params <- GETPARS(params, fixed)
-    if (echo > 1) {
-      mapply( \(x, nm) paste(nm, "=", deparse1(round(x, 6))),
-             params, names(params)) |>
-        paste(collapse = ", ") |>
-        cat("\n")
-    }
-    mu <- crr.get.mu(object, params, raw = TRUE)
-    Sigma <- crr.get.sigma(object, params, raw = TRUE)
-
-    ll <- mapply(\(t, m, Si, Gi) {
-      Ci <- chol(Si + Gi)
-      Ci <- mvtnorm::ltMatrices(Ci[which(upper.tri(Ci, diag = TRUE))], diag = TRUE)
-      mvtnorm::ldmvnorm(t, mean = m, chol = Ci)
-    }, y, mu, Sigma, Gamma)
-    if (anyNA(ll)) {
-      warning("Si sono prodotti NA nel calcolo della verosimiglianza,",
-              " che sono stati scartati.")
-      stop("rilevati NA nella verosimiglianza")
-    }
-    if (echo > 2) {
-      cat("CURRENT PIECEWISE LLIK:\n")
-      mapply(\(m, s, l) {
-        colnames(s) <- c("SIGMA", rep("", ncol(s) - 1))
-        print(cbind("MU" = m, s))
-        print(c("LLIK" = l))
-      }, mu, Sigma, ll)
-    }
-    #browser()
-    ll <- sum(ll, na.rm = TRUE)
-    if (echo > 0)
-      cat("CURRENT VALUE: ", ll, "\n")
-    if (echo > 1)
-      cat("=====================================\n")
-    return(ll)
-  }
-}
-
-##' @rdname llik-from-design
-##' @details
-##' `get.llik.from.design2` è una specializzazione per design contenenti solo studi
-##' con due trattamenti.
-##'
-get.llik.from.design2 <- function(object, transform = TRUE, echo = 0,
-                                 vcov.type = attr(object, "vcov.type")) {
-  stopifnot("Tutti gli studi devono confrontare esattamente due trattamenti!" =
-              lengths(object$design) == 2)
-  np <- length(tt <- unique(do.call(c, object$design))) - 1
-  fixed.default <- NULL
-  if (is.null(vcov.type))
-    vcov.type <- "normal"
-  vcov.type <- match.vcov.type(vcov.type)
-  fixed.default <- match.vcov.fixed(vcov.type, TRUE, np)
-  GETPARS <- function(params, fixed) {
-    if (length(names(fixed.default)) > 0) {
-      fixed[names(fixed.default)] <- fixed.default
-      attributes(fixed) <- attributes(fixed.default)
-    }
-    params <- crr.split.par(params, np, transform = transform,
-                            fixed = names(fixed),
-                            parlen = attr(fixed, "parlen"))
-    if (length(fixed) > 0)
-      params <- append(fixed, params)
-    if (vcov.type != "normal")
-      return(set.vcov.params(params, np, vcov.type))
-    params
-  }
-  sctrans <- list(sigma = \(x) exp(x),
-                  rho = \(x) 4 * exp(2*x) / (exp(2*x) + 1)^2)
-
-  # questo è il return, la funzione obiettivo e la sua score come attributo
-  structure(
-    function(params, y = crr.get.theta(object, raw = TRUE),
-             Gamma = crr.get.Gamma(object, raw = TRUE),
-             fixed = NULL) {
-      params <- GETPARS(params, fixed)
+.build.llik <- function(llik.fun, score.fun = NULL, use.data) {
+  GETDATA <- list(
+    y = substitute(crr.get.theta(DATA, raw = TRUE),
+                   list(DATA = if (use.data) quote(data) else quote(object))),
+    Gamma = substitute(crr.get.Gamma(DATA, raw = TRUE),
+                       list(DATA = if (use.data) quote(data) else quote(object)))
+  )
+  pieces <- alist(
+    `__GETPARS__` = {
+      changed <- !is.null(fixed)
+      if (length(names(fixed.default)) > 0) {
+        fixed[names(fixed.default)] <- fixed.default
+        attributes(fixed) <- attributes(fixed.default)
+      }
+      if (changed) {
+        par.pos <- crr.par.idx(np, fixed = names(fixed), parlen = attr(fixed, "parlen"))
+        par.trans <- grep("sigma|rho", names(par.pos))
+      }
+      params <- .parsplit1(params, par.pos, par.trans)
+      if (length(fixed) > 0)
+        params <- append(fixed, params)
+      if (vcov.type != "normal")
+        params <- set.vcov.params(params, np, vcov.type)
       if (echo > 1) {
         mapply( \(x, nm) paste(nm, "=", deparse1(round(x, 6))),
-                params, names(params)) |>
+               params, names(params)) |>
           paste(collapse = ", ") |>
           cat("\n")
       }
       mu <- crr.get.mu(object, params, raw = TRUE)
       Sigma <- crr.get.sigma(object, params, raw = TRUE)
-      cholSigt <- mvtnorm::ltMatrices(
-        object = mapply(\(Si, Gi) chol(Si + Gi)[which(upper.tri(Si, diag = TRUE))], Sigma, Gamma),
-        diag = TRUE)
-      tt <- do.call(cbind, y)
-      mu <- do.call(cbind, mu)
-      ll <- mvtnorm::ldmvnorm(tt, mean = mu, chol = cholSigt, logLik = FALSE)
+    },
+    `__CHECK_AND_LOG__` = {
       if (anyNA(ll)) {
-        warning("Si sono prodotti NA nel calcolo della verosimiglianza,",
-                " che sono stati scartati.")
+        warning("Si sono prodotti NA nel calcolo della verosimiglianza, ",
+                "che sono stati scartati.")
         stop("rilevati NA nella verosimiglianza")
       }
       if (echo > 2) {
@@ -143,29 +44,123 @@ get.llik.from.design2 <- function(object, transform = TRUE, echo = 0,
           print(c("LLIK" = l))
         }, mu, Sigma, ll)
       }
-      #browser()
       ll <- sum(ll, na.rm = TRUE)
       if (echo > 0)
         cat("CURRENT VALUE: ", ll, "\n")
       if (echo > 1)
         cat("=====================================\n")
+    }
+  )
+  arglist <- append(alist(params =, fixed = NULL),
+                   if (use.data) alist(data = object) else GETDATA,
+                   after = 1)
+  if (use.data) {
+    GETDATAexpr <- append(as.symbol("{"),
+                          .mapply(\(expr, vname) call("<-", as.name(vname), expr),
+                                  list(GETDATA, names(GETDATA)), NULL),
+                          after = 1)
+    pieces$`__GETPARS__` <- .append.expr(pieces$`__GETPARS__`, as.call(GETDATAexpr))
+  }
+  formals(llik.fun) <- arglist
+  body(llik.fun) <- .subst.keys(body(llik.fun), pieces)
+  if (!is.null(score.fun)) {
+    formals(score.fun) <- arglist
+    body(score.fun) <- .subst.keys(body(score.fun), pieces)
+  }
+  if (is.null(score.fun))
+    return(llik.fun)
+  structure(llik.fun, score = score.fun)
+}
+
+##' @rdname llik-from-design
+##' A partire da un *design*, crea un oggetto funzione che può essere
+##' passato ad `optim`.
+##'
+##' @export
+##' @title Funzione per la definizione della verosimiglianza per NCRR.
+##'
+##' @param object oggetto che definisce il design
+##' @param transform applica trasformazioni ai parametri di
+##'   varianza/correlazione
+##' @param echo regola il livello delle stampe di debug
+##' @param use.data se `TRUE`, la funzione risultante prenderà in input il dataset
+##' completo anzichè le singole componenti. Utile per l'utilizzo in combinazione
+##' con la libreria `boot` o `likelihoodAsy`.
+##' @param vcov.type struttura della matrice di varianza-covarianza.
+##'
+##' @return una funzione del vettore dei parametri (in tal senso `llik1` ne
+##'   costituisce una versione semplificata), con la possibilità di fissare gli
+##'   stessi (opzione `fixed = list(...)`)
+##' @author Marco Bressan
+get.llik.from.design <- function(object, transform = TRUE, echo = 0,
+                                 vcov.type = attr(object, "vcov.type"),
+                                 use.data = FALSE) {
+  np <- length(tt <- unique(do.call(c, object$design))) - 1
+  fixed.default <- NULL
+  if (is.null(vcov.type))
+    vcov.type <- "normal"
+  vcov.type <- match.vcov.type(vcov.type)
+  fixed.default <- match.vcov.fixed(vcov.type, TRUE, np)
+  par.pos <- crr.par.idx(np, fixed = names(fixed.default), parlen = attr(fixed.default, "parlen"))
+  par.trans <- grep("sigma|rho", names(par.pos))
+  .build.llik(
+    function(params, y = crr.get.theta(object, raw = TRUE),
+             Gamma = crr.get.Gamma(object, raw = TRUE),
+             fixed = NULL) {
+      `__GETPARS__`
+      ll <- mapply(\(t, m, Si, Gi) {
+        Ci <- chol(Si + Gi)
+        Ci <- mvtnorm::ltMatrices(Ci[which(upper.tri(Ci, diag = TRUE))], diag = TRUE)
+        mvtnorm::ldmvnorm(t, mean = m, chol = Ci)
+      }, y, mu, Sigma, Gamma)
+      `__CHECK_AND_LOG__`
       return(ll)
     },
+    use.data = as.logical(use.data)
+  )
+}
 
-    score = function(params, y = crr.get.theta(object, raw = TRUE),
+##' @rdname llik-from-design
+##' @details
+##' `get.llik.from.design2` è una specializzazione per design contenenti solo studi
+##' con due trattamenti.
+##'
+get.llik.from.design2 <- function(object, transform = TRUE, echo = 0,
+                                 vcov.type = attr(object, "vcov.type"),
+                                 use.data = FALSE) {
+  stopifnot("Tutti gli studi devono confrontare esattamente due trattamenti!" =
+              lengths(object$design) == 2)
+  np <- length(tt <- unique(do.call(c, object$design))) - 1
+  fixed.default <- NULL
+  if (is.null(vcov.type))
+    vcov.type <- "normal"
+  vcov.type <- match.vcov.type(vcov.type)
+  fixed.default <- match.vcov.fixed(vcov.type, TRUE, np)
+  sctrans <- list(sigma = \(x) exp(x),
+                  rho = \(x) 4 * exp(2*x) / (exp(2*x) + 1)^2)
+  par.pos <- crr.par.idx(np, fixed = names(fixed.default), parlen = attr(fixed.default, "parlen"))
+  par.trans <- grep("sigma|rho", names(par.pos))
+  # questo è il return, la funzione obiettivo e la sua score come attributo
+  .build.llik(
+    llik.fun = function(params, y = crr.get.theta(object, raw = TRUE),
+             Gamma = crr.get.Gamma(object, raw = TRUE),
+             fixed = NULL) {
+      `__GETPARS__`
+      cholSigt <- mvtnorm::ltMatrices(
+        object = mapply(\(Si, Gi) chol(Si + Gi)[which(upper.tri(Si, diag = TRUE))], Sigma, Gamma),
+        diag = TRUE)
+      tt <- do.call(cbind, y)
+      mu <- do.call(cbind, mu)
+      ll <- mvtnorm::ldmvnorm(tt, mean = mu, chol = cholSigt, logLik = FALSE)
+      `__CHECK_AND_LOG__`
+      return(ll)
+    },
+    score.fun =  function(params, y = crr.get.theta(object, raw = TRUE),
                      Gamma = crr.get.Gamma(object, raw = TRUE),
                      fixed = NULL) {
       onames <- names(params)
       opars <- params
-      params <- GETPARS(params, fixed)
-      if (echo > 1) {
-        mapply( \(x, nm) paste(nm, "=", deparse1(round(x, 6))),
-                params, names(params)) |>
-          paste(collapse = ", ") |>
-          cat("\n")
-      }
-      mu <- crr.get.mu(object, params, raw = TRUE)
-      Sigma <- crr.get.sigma(object, params, raw = TRUE)
+      `__GETPARS__`
       # score rispetto ai paramentri normali (mu, Sigmatilde)
       scL <- mapply(.score1mat, y, mu, Sigma, SIMPLIFY = FALSE)
       # derivata di mu in funzione di alpha, beta, mu0
@@ -191,7 +186,8 @@ get.llik.from.design2 <- function(object, transform = TRUE, echo = 0,
       if (!is.null(onames))
         sc <- sc[onames, ] # toglie parametri inutili tipo rho per "achana"
       return(rowSums(sc))
-    }
+    },
+    use.data = as.logical(use.data)
   )
 }
 
@@ -202,62 +198,4 @@ get.llik.from.design2 <- function(object, transform = TRUE, echo = 0,
   scQ <- Scinv %*% tcrossprod(tt - mu) %*% Scinv
   scoreS <- -Scinv + 0.5 * diag(diag(Scinv)) + scQ - 0.5 * diag(diag(scQ))
   list(mu = scmu, Sigma = scoreS)
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-##' Verosimiglianza per un singolo studio per NCRR __con baseline__.
-##' --VERSIONE PRELIMINARE--
-##'
-##' @title Verosimiglianza NCRR
-##' @param params vettore dei parametri contenuti in un unico vettore; in
-##'   ordine: alfa_0j, beta_0j, mu0, sigma^2_0, rho, sigma^2_{0j}.
-##' @param y vettore dei vartheta
-##' @param Gamma matrice Gamma
-##' @param design vettore che specifica il design (attualmente utile solo la
-##'   sua dimensione)
-##' @return valore della log-verosimiglianza
-##' @author Marco Bressan
-##' @export
-llik1 <- function(params, y, Gamma, design = c(0, 1)) {
-  stop("Non usare questa funzione!")
-  params <- crr.split.par(params, np <- length(design) - 1)
-  mu <- rep(NA, np + 1)
-  Sigma <- matrix(0, np + 1, np + 1)
-  ll <- with(params, {
-    mvtnorm::dmvnorm(
-      y, mean = mu <<- crr.mean.baseline0(alpha, beta, mu0, design),
-      sigma = Sigma <<- crr.vcov(beta, sigma20, sigma2, rho, design) + Gamma,
-      log = TRUE)
-  })
-  #browser()
-  cat("PARAMS: ")
-  with(params, {
-    lapply(list(alpha, beta, mu0, sigma20, rho, sigma2), \(x) deparse1(round(x, 6))) |>
-      append(x = list(fmt = "alpha = %s, beta = %s, \n\tmu0 = %s, sigma20 = %s, rho = %s, \n\tsigma2 = %s"), values = _) |>
-      do.call(sprintf, args = _) |>
-      cat("\nVALUE: ", ll, "\n\n")
-    print(list(marginal_mu = mu, marginal_tildeSigma = Sigma))
-    cat("\n=====================================\n")
-  })
-  return(ll)
 }

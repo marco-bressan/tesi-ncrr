@@ -146,6 +146,18 @@ crr.remove.par <- function(params, what) {
   params[-grep(paste(rem[what], collapse = "|"), names(params))]
 }
 
+.parsplit1 <- function(params, pposs, transform = grep("sigma|rho", names(pposs))) {
+  plist <- as.list(pposs)
+  for (i in seq_along(pposs)) {
+    pim1 <- if (i == 1) 1 else pposs[i - 1] + 1
+    plist[[i]] <- params[pim1:pposs[i]]
+  }
+  for (i in transform) {
+    plist[[i]] <- .ptrans(plist[[i]], names(plist)[i], TRUE)
+  }
+  lapply(plist, unname)
+}
+
 ##' lo scopo di questa funzione è fornire un tramite tra la rappresentazione
 ##' dei parametri sottoforma di vettore voluta da `optim` e una più
 ##' "user-friendly" in cui i parametri sono separati
@@ -190,8 +202,8 @@ crr.split.par <- function(params, np, transform = FALSE, fixed = NULL,
     plist[[names(pposs)[i]]] <- extrfn(params, pim1:pposs[i])
   }
   if (isTRUE(transform)) {
-    for (i in c("sigma20", "sigma2", "rho")) {
-      plist[[i]] <- crr.transform.par(plist[[i]], i, TRUE)
+    for (i in grep("sigma|rho", names(plist), value = TRUE)) {
+      plist[[i]] <- .ptrans(plist[[i]], i, TRUE)
     }
   }
   lapply(plist, unname)

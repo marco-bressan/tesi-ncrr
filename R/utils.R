@@ -34,3 +34,34 @@ subst.params <- function(params, subst) {
   }
   return(params)
 }
+
+.append.expr <- function(expr1, expr2, after = 1) {
+  symb <- as.symbol("{")
+  if (!identical(expr1[[1]], symb))
+    expr1 <- substitute({EXPR}, list(EXPR = expr1))
+  if (!identical(expr2[[1]], symb))
+    expr2 <- substitute({EXPR}, list(EXPR = expr2))
+  after <- min(max(after, 1), length(expr1))
+  as.call(append(as.list(expr1), as.list(expr2)[-1], after = after))
+}
+
+.subst.keys <- function(expr, keys) {
+  call.names <- vapply(expr, \(x) as.character(if (is.symbol(x)) x else x[[1]]),
+                       character(1))
+  subst.idx <- grep("^__.*__$", call.names)
+  matched <- match(call.names[subst.idx], names(keys))
+  for (i in seq_along(subst.idx)) {
+    if (!is.na(matched[i]))
+      expr[[subst.idx[i]]] <- keys[[matched[i]]]
+  }
+  expr
+}
+
+.join.exprs <- function(exprs) {
+  ret <- quote({})
+  for (i in seq_along(exprs)) {
+    ret[i + 1] <- exprs[[i]]
+  }
+  ret
+}
+

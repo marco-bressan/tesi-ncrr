@@ -42,7 +42,10 @@ crr.get.sigma <- function(object, params, raw = FALSE) {
   Sigmal <- lapply(dunique, \(d) {
     psel <- par.select.multi(d, params)
     V <- crr.vcov(psel, d)
-    if (anyNA(V)) stop("Na rilevati nel calcolo di sigma!") # togliere per efficientamento
+    if (anyNA(V)) {
+      print(params)
+      stop("Na rilevati nel calcolo di sigma!") # togliere per efficientamento
+    }
     V
   })
   if (raw)
