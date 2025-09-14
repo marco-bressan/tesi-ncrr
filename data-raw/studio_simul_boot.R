@@ -18,101 +18,169 @@ VCOVTYPE <- "achana"
 
 #DIR <- "/home/marco/output-tesi"
 #DIR <- "../.." # per il markdown
-DIR <- "../output-tesi/" # per l'esecuzione nel pacchetto
+DIR <- "../output-boot/" # per l'esecuzione nel pacchetto
+if (!dir.exists(DIR))
+  dir.create(DIR)
 
 #' # Simulazione basata sul problema di achana
-#| warning: false
+des <- ncrr.design(smoke.alarm)
+attr(des, "vcov.type") = "achana"
+
+# stima MLE ottenuta sul dataset originale
 simu.pars <- list(alpha = c(0.53118984013899, 1.0431973777787, 0.00434231242384523,
                             2.36407165618289, 2.66293182986318, 2.7339581049579),
-                  beta = c(0.948918313002282,
-                           1.02425107553256, 1.06604309779969, 0.240340161234799, 0.179383944934584,
-                           0.179378353526596),
+                  beta = c(0.948918313002282, 1.02425107553256, 1.06604309779969,
+                           0.240340161234799, 0.179383944934584, 0.179378353526596),
                   mu0 = 0.81098898311333,
                   sigma20 = 2.63212049308308,
                   sigma2 = 5.69469982077026) # stime MV dai dati originali
-simu.des <- do.call(simulate,
-                    append(list(ncrr.design(smoke.alarm), vcov.type = VCOVTYPE,
-                                nsim = NSIM, seed = 212),
-                           simu.pars))
+simu.des <- simulate(des, params = simu.pars,
+                     vcov.type = VCOVTYPE, nsim = NSIM, seed = 212)
 simu.pars.v <- tesi.ncrr:::crr.join.par(simu.pars) |> tesi.ncrr:::crr.transform.par()
 gendat.fun <- function(data, theta) {
-  theta <- tesi.ncrr:::crr.split.par(theta, length(data$treatments) - 1, transform = TRUE,
-                         fixed = tesi.ncrr:::match.vcov.fixed(attr(data, "vcov.type")))
-  suppressMessages(simulate(data, params = theta, seed = 342)[[1]]) # estraggo solo il design, non tutta la lista
+  theta <- crr.split.par(theta, length(data$treatments) - 1, transform = TRUE,
+                         fixed = match.vcov.fixed(attr(data, "vcov.type")))
+  # generazione dataset simulato (estraggo solo il design, non tutta la lista)
+  suppressMessages(simulate.ncrr.design(data, params = theta, seed = 342)[[1]])
 }
 
-
-psi.fun <- function(theta) {
+psi.fun <- function(theta, data) {
   theta[["beta5"]]
 }
 
-rp.stat <- function(dati.gen, psi0, init, param = match("beta5", names(init)), ...) {
+# statistica radice del log-rapporto di verosimiglianza
+rp.stat <- function(dati.gen, psi0, init, param = match("beta5", names(init)),
+                    theta.hat = NULL, ..., exact = TRUE) {
   # psi par d'interesse, lam di disturbo
-  opt.theta <- nlminb(init, \(x) -llik.fun(x, dati.gen))
-  theta.hat <- opt.theta$par
-  psi.hat <- theta.hat[param]
-  lam0 <- nlminb(theta.hat[-param], \(x) {
-    z <- theta.hat
-    z[param] <- psi0
-    z[-param] <- x
-    -llik.fun(z, dati.gen)
-  })$par
-  theta.hat[param] <- psi0
-  theta.hat[-param] <- lam0
-  lp0 <- llik.fun(theta.hat, dati.gen)
-  if (-opt.theta$objective < lp0) browser()
-  rp <- sign(psi.hat - psi0) * sqrt(2) * sqrt(-opt.theta$objective - lp0)
-  structure(rp, theta = opt.theta)
+  if (is.null(theta.hat)) {
+    opt.theta <- optim(init, \(x) -llik.fun(x, dati.gen), method = "BFGS", hessian = TRUE)
+    l.hat <- -opt.theta$value
+    theta.hat <- opt.theta$par
+    J <- opt.theta$hessian
+  } else {
+    l.hat <- llik.fun(theta.hat, dati.gen)
+    J <- -optimHess(theta.hat, llik.fun)
+  }
+  if (exact) {
+    theta.psi <- Rsolnp::solnp(theta.hat, \(x) -llik.fun(x, dati.gen),
+                               eqfun = \(t) t[param], eqB = psi0,
+                               control = list(trace = 0))$pars
+    ## Equivalente ma più lenta:
+    # lam0 <- nlminb(theta.hat[-param], \(x) {
+    #   z <- theta.hat
+    #   z[param] <- psi0
+    #   z[-param] <- x
+    #   -llik.fun(z, dati.gen)
+    # })$par
+    # theta.psi <- theta.hat
+    # theta.psi[param] <- psi0
+    # theta.psi[-param] <- lam0
+  } else {
+    theta.psi <- theta.hat
+    theta.psi[param] <- psi0
+    # calcolo approssimato del parametro di disturbo
+    theta.psi[-param] <- theta.hat[-param] +
+      c(solve(J[-param, -param]) %*% J[-param, param] %*% (theta.hat[param] - psi0))
+  }
+  lp0 <- llik.fun(theta.psi, dati.gen)
+  rp <- unname(sign(theta.hat[param] - psi0) * sqrt(2) * sqrt(l.hat - lp0))
+  structure(rp, theta.hat = theta.hat)
 }
 
+# bootstrap sul vero dataset
+param <- match("beta5", names(simu.pars.v))
+llik.fun <- get.llik.from.design2(des, vcov.type = VCOVTYPE, echo = 0,
+                                  use.data = TRUE, stop.on.fail = FALSE)
+
+#' Si testa l'ipotesi che beta5 != 1. Da HMA:
+#' eta_i = b + b_1 xi_i + e_i e_i ~ N (0, s^2) , i = 1,...,N
+#' Usually, the inferential interest is in the
+#' parameter β_1 associated with the underlying risk. If β_1 = 1, then if the
+#' control risk increases by a certain amount, the treatment group risk
+#' increases by the same amount. Thus, interesting cases are usually those
+#' where β1 deviates from 1.
+boot.rp <- crr.boot(des, rp.stat, R = 100,
+                    ran.gen = gendat.fun, mle = simu.pars.v, parallel = FALSE,
+                    seed = c(1998135100L, 2044097286L, 1091132551L,
+                             966088075L, 1553350452L, 1303502678L),
+                    psi0 = 1, init = simu.pars.v, param = param, exact = FALSE)
+boot.stat <- Filter(is.finite, boot.rp$t)
+density(boot.stat) |> plot()
+abline(v = boot.rp$t0)
+
+bgrid <- seq(-10, 20, length.out = 50)
+r.val <- sapply(bgrid, \(x) rp.stat(des, x, init = simu.pars.v, param = param,
+                                    exact = FALSE))
+sigb2.val <- sapply(r.val, function(x) mean(boot.stat <= x))
+sigb2.val <- clamp(sigb2.val, eps = 1e-8)
+sm1 <- smooth.spline(qnorm(sigb2.val), bgrid)
+# intervalli di confidenza
+predict(sm1, qnorm(c(.975, .5, .025)))[["y"]]
+
+plot(sm1$y, sm1$x, type = "l", main = "Radice con segno del log-RV",
+     xlab = expression(beta[paste(5, ",", i)]),
+     ylab = expression(r[P](beta[paste(5, ",", i)])))
+points(bgrid, qnorm(sigb2.val), pch = 20)
+abline(h = qnorm(c(0.025, 0.975)), lty = 3)
+
+if (FALSE) {
+  # differenza di performance tra la versione approssimata e quella esatta
+  # (ci mette un po')
+  microbenchmark::microbenchmark(
+    exact = sapply(samp, \(x) rp.stat(des, x, init = simu.pars.v, param = param)),
+    not_exact = sapply(samp, \(x) rp.stat(des, x, init = simu.pars.v, param = param,
+                                          exact = FALSE)),
+    times = 5,
+    setup = {
+      samp <- sample(bgrid, 10)
+    }
+  )
+  #| eval: false
+  # simulazione
+  lik.vals <- lik.vals2 <- numeric(NSIM)
+  init <- getInitial(simu.des[[1]], vcov.type = VCOVTYPE)
+  par.J <- par.J2 <- array(NA, c(length(init), length(init), NSIM))
+  par.h0 <- par.stime <- par.stime2 <- par.sd <- par.sd2 <- matrix(NA, length(init), NSIM)
+  psi.rs <- psi.stime <- psi.sd <- numeric(NSIM)
 
 
-#| eval: false
-# simulazione
-lik.vals <- lik.vals2 <- numeric(NSIM)
-init <- getInitial(simu.des[[1]], vcov.type = VCOVTYPE)
-par.J <- par.J2 <- array(NA, c(length(init), length(init), NSIM))
-par.h0 <- par.stime <- par.stime2 <- par.sd <- par.sd2 <- matrix(NA, length(init), NSIM)
-psi.rs <- psi.stime <- psi.sd <- numeric(NSIM)
+  for (k in 1:NSIM) {
+    message(sprintf("%.2f%%\r", k / NSIM * 100))
+    llik.fun <- get.llik.from.design(simu.des[[k]], vcov.type = VCOVTYPE, echo = 0,
+                                     use.data = TRUE)
+    # ------ OTTIMIZZAZIONE ----
+    opt1 <- crr.rstar(simu.des[[k]], thetainit = init, floglik = llik.fun,
+                      fpsi = psi.fun,  psival = psi.fun(init),
+                      datagen = gendat.fun, ronly = TRUE)
+    unclass(opt1)
+    boot.rp <- crr.boot(simu.des[[k]], rp.stat, R = 30, sim = "parametric",
+                        ran.gen = gendat.fun, mle = opt1$theta.hat, parallel = TRUE,
+                        seed = c(1998135100L, 2044097286L, 1091132551L, 966088075L, 1553350452L,
+                                 1303502678L),
+                        psi0 = simu.pars.v[param], init = opt1$theta.hat, param = param)
 
-for (k in 1) {
-  k <- 1
-  message(sprintf("%.2f%%\r", k / NSIM * 100))
-  llik.fun <- get.llik.from.design(simu.des[[k]], vcov.type = VCOVTYPE, echo = 0)
-  # ------ OTTIMIZZAZIONE ----
-  opt1 <- crr.rstar(simu.des[[k]], thetainit = init, floglik = llik.fun,
-                    fpsi = psi.fun,  psival = psi.fun(init),
-                    datagen = gendat.fun, ronly = TRUE)
-  unclass(opt1)
-  boot.rp <- crr.boot(simu.des[[k]], rp.stat, R = 30, sim = "parametric",
-                      ran.gen = gendat.fun, mle = simu.pars.v, parallel = FALSE,
-                      seed = c(1998135100L, 2044097286L, 1091132551L, 966088075L, 1553350452L,
-                               1303502678L),
-                      psi0 = simu.pars.v[11], init = init, param = 11)
-  boot.rp
+    saveRDS(boot.rp, file = file.path(DIR, paste0("boot_", k, "_", as.integer(Sys.time()), ".rds")))
+    # ------ REGISTRAZIONE RISULTATI ----
+    ## lik.vals[k] <- opt1$value
+    ## par.stime[, k] <- tesi.ncrr:::crr.transform.par(opt1$par, inverse = TRUE)
+    ## par.J[,,k] <- opt1$hessian
+    ## par.sd[, k] <- sqrt(diag(solve(opt1$hessian)))
+    ## if (inherits(opt2, "try-error")) next
+    ## lik.vals2[k] <- llik.fun(opt2$theta.hat, simu.des[[k]])
+    ## par.stime2[, k] <- tesi.ncrr:::crr.transform.par(opt2$theta.hat, inverse = TRUE)
+    ## par.J2[,,k] <- opt2$info.hat
+    ## par.sd2[, k] <- opt2$se.theta.hat
+    ## par.h0[, k] <- opt2$theta.hyp
+    ## # stime di psi
+    ## psi.rs[k] <- opt2$rs
+    ## psi.stime[k] <- opt2$psi.hat
+    ## psi.sd[k] <- opt2$se.psi.hat
+  }
 
+  dimnames(par.h0) <- dimnames(par.stime) <- dimnames(par.stime2) <-
+    dimnames(par.sd) <- dimnames(par.sd2) <-
+    list(pars = names(init), repl = seq_along(simu.des))
+  # fine simulazione
+  save.image(file.path(DIR, "sim1provv"))
 
-  #saveRDS(list(optim = opt1, likasy = opt2),
-  #        file = file.path(DIR, paste0("opt_", k, "_", as.integer(Sys.time()), ".rds")))
-  # ------ REGISTRAZIONE RISULTATI ----
-  ## lik.vals[k] <- opt1$value
-  ## par.stime[, k] <- tesi.ncrr:::crr.transform.par(opt1$par, inverse = TRUE)
-  ## par.J[,,k] <- opt1$hessian
-  ## par.sd[, k] <- sqrt(diag(solve(opt1$hessian)))
-  ## if (inherits(opt2, "try-error")) next
-  ## lik.vals2[k] <- llik.fun(opt2$theta.hat, simu.des[[k]])
-  ## par.stime2[, k] <- tesi.ncrr:::crr.transform.par(opt2$theta.hat, inverse = TRUE)
-  ## par.J2[,,k] <- opt2$info.hat
-  ## par.sd2[, k] <- opt2$se.theta.hat
-  ## par.h0[, k] <- opt2$theta.hyp
-  ## # stime di psi
-  ## psi.rs[k] <- opt2$rs
-  ## psi.stime[k] <- opt2$psi.hat
-  ## psi.sd[k] <- opt2$se.psi.hat
 }
-
-dimnames(par.h0) <- dimnames(par.stime) <- dimnames(par.stime2) <-
-  dimnames(par.sd) <- dimnames(par.sd2) <-
-  list(pars = names(init), repl = seq_along(simu.des))
-# fine simulazione
-save.image(file.path(DIR, "sim1provv"))

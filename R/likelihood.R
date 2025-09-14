@@ -1,12 +1,21 @@
-.build.llik <- function(llik.fun, score.fun = NULL, use.data) {
+.build.llik <- function(llik.fun, score.fun = NULL, use.data, stop.on.fail) {
   GETDATA <- list(
     y = substitute(crr.get.theta(DATA, raw = TRUE),
                    list(DATA = if (use.data) quote(data) else quote(object))),
     Gamma = substitute(crr.get.Gamma(DATA, raw = TRUE),
                        list(DATA = if (use.data) quote(data) else quote(object)))
   )
-  pieces <- alist(
-    `__GETPARS__` = {
+  TERMINATE_NA <-if (is.na(stop.on.fail)) quote({
+    return(-Inf)
+  }) else if (stop.on.fail) quote({
+    stop("rilevati NA nella verosimiglianza")
+  }) else quote({
+    warning("Si sono prodotti NA nel calcolo della verosimiglianza; ",
+            "si restituisce -Inf.")
+    return(-Inf)
+  })
+  pieces <- list(
+    `__GETPARS__` = quote({
       changed <- !is.null(fixed)
       if (length(names(fixed.default)) > 0) {
         fixed[names(fixed.default)] <- fixed.default
@@ -29,13 +38,9 @@
       }
       mu <- crr.get.mu(object, params, raw = TRUE)
       Sigma <- crr.get.sigma(object, params, raw = TRUE)
-    },
-    `__CHECK_AND_LOG__` = {
-      if (anyNA(ll)) {
-        warning("Si sono prodotti NA nel calcolo della verosimiglianza, ",
-                "che sono stati scartati.")
-        stop("rilevati NA nella verosimiglianza")
-      }
+    }),
+    `__CHECK_AND_LOG__` = substitute({
+      if (anyNA(ll)) TERMINATE_NA
       if (echo > 2) {
         cat("CURRENT PIECEWISE LLIK:\n")
         mapply(\(m, s, l) {
@@ -49,7 +54,7 @@
         cat("CURRENT VALUE: ", ll, "\n")
       if (echo > 1)
         cat("=====================================\n")
-    }
+    }, list(TERMINATE_NA = TERMINATE_NA))
   )
   arglist <- append(alist(params =, fixed = NULL),
                    if (use.data) alist(data = object) else GETDATA,
@@ -72,10 +77,11 @@
   structure(llik.fun, score = score.fun)
 }
 
-##' @rdname llik-from-design
+##'
 ##' A partire da un *design*, crea un oggetto funzione che può essere
 ##' passato ad `optim`.
 ##'
+##' @rdname llik-from-design
 ##' @export
 ##' @title Funzione per la definizione della verosimiglianza per NCRR.
 ##'
@@ -83,18 +89,21 @@
 ##' @param transform applica trasformazioni ai parametri di
 ##'   varianza/correlazione
 ##' @param echo regola il livello delle stampe di debug
+##' @param vcov.type struttura della matrice di varianza-covarianza
 ##' @param use.data se `TRUE`, la funzione risultante prenderà in input il dataset
-##' completo anzichè le singole componenti. Utile per l'utilizzo in combinazione
-##' con la libreria `boot` o `likelihoodAsy`.
-##' @param vcov.type struttura della matrice di varianza-covarianza.
-##'
+##'   completo anzichè le singole componenti. Utile per l'utilizzo in combinazione
+##'   con la libreria `boot` o `likelihoodAsy`.
+##' @param stop.on.fail La funzione dovrebbe restituire un errore se una
+##'   componente della verosimiglianza risulta NA? Se l'argomento è impostato a
+##'   FALSE oppure NA, la funzione restituirà invece -Inf, nel primo caso con un
+##'   avvertimento.
 ##' @return una funzione del vettore dei parametri (in tal senso `llik1` ne
 ##'   costituisce una versione semplificata), con la possibilità di fissare gli
 ##'   stessi (opzione `fixed = list(...)`)
 ##' @author Marco Bressan
 get.llik.from.design <- function(object, transform = TRUE, echo = 0,
                                  vcov.type = attr(object, "vcov.type"),
-                                 use.data = FALSE) {
+                                 use.data = FALSE, stop.on.fail = TRUE) {
   np <- length(tt <- unique(do.call(c, object$design))) - 1
   fixed.default <- NULL
   if (is.null(vcov.type))
@@ -109,14 +118,17 @@ get.llik.from.design <- function(object, transform = TRUE, echo = 0,
              fixed = NULL) {
       `__GETPARS__`
       ll <- mapply(\(t, m, Si, Gi) {
-        Ci <- chol(Si + Gi)
-        Ci <- mvtnorm::ltMatrices(Ci[which(upper.tri(Ci, diag = TRUE))], diag = TRUE)
-        mvtnorm::ldmvnorm(t, mean = m, chol = Ci)
+        chl <- try(chol(S <- Si + Gi))
+        if (inherits(chl, "try-error"))
+          chl <- as.matrix(as(Matrix::Cholesky(S),"dtrMatrix"))
+        chl <- mvtnorm::ltMatrices(chl[which(upper.tri(chl, diag = TRUE))], diag = TRUE)
+        mvtnorm::ldmvnorm(t, mean = m, chol = chl)
       }, y, mu, Sigma, Gamma)
       `__CHECK_AND_LOG__`
       return(ll)
     },
-    use.data = as.logical(use.data)
+    use.data = as.logical(use.data),
+    stop.on.fail = as.logical(stop.on.fail)
   )
 }
 
@@ -127,7 +139,7 @@ get.llik.from.design <- function(object, transform = TRUE, echo = 0,
 ##'
 get.llik.from.design2 <- function(object, transform = TRUE, echo = 0,
                                  vcov.type = attr(object, "vcov.type"),
-                                 use.data = FALSE) {
+                                 use.data = FALSE, stop.on.fail = TRUE) {
   stopifnot("Tutti gli studi devono confrontare esattamente due trattamenti!" =
               lengths(object$design) == 2)
   np <- length(tt <- unique(do.call(c, object$design))) - 1
@@ -147,7 +159,12 @@ get.llik.from.design2 <- function(object, transform = TRUE, echo = 0,
              fixed = NULL) {
       `__GETPARS__`
       cholSigt <- mvtnorm::ltMatrices(
-        object = mapply(\(Si, Gi) chol(Si + Gi)[which(upper.tri(Si, diag = TRUE))], Sigma, Gamma),
+        object = mapply(\(Si, Gi) {
+          chl <- try(chol(S <- Si + Gi))
+          if (inherits(chl, "try-error"))
+            chl <- as.matrix(as(Matrix::Cholesky(S),"dtrMatrix"))
+          chl[which(upper.tri(Si, diag = TRUE))]
+        } , Sigma, Gamma),
         diag = TRUE)
       tt <- do.call(cbind, y)
       mu <- do.call(cbind, mu)
@@ -187,7 +204,8 @@ get.llik.from.design2 <- function(object, transform = TRUE, echo = 0,
         sc <- sc[onames, ] # toglie parametri inutili tipo rho per "achana"
       return(rowSums(sc))
     },
-    use.data = as.logical(use.data)
+    use.data = as.logical(use.data),
+    stop.on.fail = as.logical(stop.on.fail)
   )
 }
 

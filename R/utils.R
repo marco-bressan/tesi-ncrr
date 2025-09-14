@@ -1,3 +1,9 @@
+clamp <- function(x, min = 0, max = 1, eps = 0) {
+  x[x >= (max - eps)] <- max - eps
+  x[x <= (min + eps)] <- min + eps
+  x
+}
+
 blockdiag <- function(mats, fill = 0) {
   if (is.matrix(mats)) return(mats)
   stopifnot("only square matrices are supported!" = sapply(mats, nrow) == (nc <- sapply(mats, ncol)))

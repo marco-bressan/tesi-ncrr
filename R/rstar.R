@@ -1,6 +1,5 @@
 crr.rstar <- function(data, thetainit, floglik, fscore = NULL, fpsi, psival,
                       datagen, R = 1000, seed = NULL, ronly = FALSE,
-                      psidesc = NULL, constr.opt = "solnp",
                       parallel = FALSE, nclus = NA, trace = 1) {
   if (!is.list(data)) {
     warning("data should be provided as a list\n")
@@ -24,8 +23,6 @@ crr.rstar <- function(data, thetainit, floglik, fscore = NULL, fpsi, psival,
     if (!is.numeric(f0))
       stop("problems in the function to simulate data \n")
   }
-  if ((constr.opt != "solnp") & (constr.opt != "alabama"))
-    stop("constrained optimizer must be either 'solnp' or 'alabama'")
   p <- length(thetainit)
   if (trace > 0)
     cat("get mle ....", "\t")
@@ -35,41 +32,47 @@ crr.rstar <- function(data, thetainit, floglik, fscore = NULL, fpsi, psival,
   theta.hat <- obj.hat$par
   el.hat <- floglik(theta.hat, data)
   if (!ronly) {
-    j.hat <- if (is.null(fscore))
-               -pracma::hessian(floglik, theta.hat, data = data)
-    else -pracma::jacobian(fscore, theta.hat, data = data)
-    score.hat.data <- if (is.null(fscore))
-                        pracma::grad(floglik, theta.hat, data = data)
-    else fscore(theta.hat, data = data)
+    j.hat <- {
+      if (is.null(fscore))
+        -pracma::hessian(floglik, theta.hat, data = data)
+      else
+        -pracma::jacobian(fscore, theta.hat, data = data)
+    }
+    score.hat.data <- {
+      if (is.null(fscore))
+        pracma::grad(floglik, theta.hat, data = data)
+      else
+        fscore(theta.hat, data = data)
+    }
     var.theta.hat <- solve(j.hat)
     se.theta.hat <- sqrt(diag(var.theta.hat))
   }
   if (trace > 0)
     cat("get mle under the null....", "\n")
-  psifcn.mod <- if (constr.opt == "solnp")
-                  function(theta, data) fpsi(theta)
-  else function(theta, data) fpsi(theta) - psival
-  objHyp <- if (constr.opt == "solnp")
-              Rsolnp::solnp(theta.hat, fun = min.floglik, eqfun = psifcn.mod,
-                            eqB = psival, control = list(trace = 0), data = data)
-  else alabama::constrOptim.nl(theta.hat, fn = min.floglik, heq = psifcn.mod,
-                               gr = min.fscore, control.outer = list(trace = FALSE),
-                               data = data)
+  objHyp <- Rsolnp::solnp(theta.hat, fun = min.floglik, eqfun = \(theta, data) fpsi(theta),
+                          eqB = psival, control = list(trace = 0), data = data)
   theta.til <- objHyp$par
   el.til <- floglik(theta.til, data)
   psi.hat <- fpsi(theta.hat)
   if (!ronly) {
-    j.til <- if (is.null(fscore))
-               -pracma::hessian(floglik, theta.til, data = data)
-    else -pracma::jacobian(fscore, theta.til, data = data)
-    score.til.data <- if (is.null(fscore))
-                        pracma::grad(floglik, theta.til, data = data)
-    else fscore(theta.til, data)
+    j.til <- {
+      if (is.null(fscore))
+        -pracma::hessian(floglik, theta.til, data = data)
+      else
+        -pracma::jacobian(fscore, theta.til, data = data)
+    }
+    score.til.data <- {
+      if (is.null(fscore))
+        pracma::grad(floglik, theta.til, data = data)
+      else
+        fscore(theta.til, data)
+    }
     dpsi.dtheta <- pracma::grad(fpsi, theta.hat)
     var.psi.hat <- dpsi.dtheta %*% var.theta.hat %*%
       dpsi.dtheta
     se.psi.hat <- sqrt(var.psi.hat)
   }
+  print(list(rstar = c(L = el.hat, Lp = el.til)))
   r <- sqrt(2 * (el.hat - el.til)) * sign(psi.hat - psival)
   if (!ronly) {
     C.hat <- pracma::grad(fpsi, theta.hat)
@@ -95,13 +98,18 @@ crr.rstar <- function(data, thetainit, floglik, fscore = NULL, fpsi, psival,
         dataSim <- datagen(theta.hat, data = data)
         l1 <- floglik(theta.hat, dataSim)
         l0 <- floglik(theta.til, dataSim)
-        score.hat <- if (is.null(fscore))
-                       pracma::grad(f = floglik, x0 = theta.hat,
-                                    data = dataSim)
-        else fscore(theta.hat, dataSim)
-        score.til <- if (is.null(fscore))
-                       pracma::grad(f = floglik, x0 = theta.til, data = dataSim)
-        else fscore(theta.til, dataSim)
+        score.hat <- {
+          if (is.null(fscore))
+            pracma::grad(f = floglik, x0 = theta.hat, data = dataSim)
+          else
+            fscore(theta.hat, dataSim)
+        }
+        score.til <- {
+          if (is.null(fscore))
+            pracma::grad(f = floglik, x0 = theta.til, data = dataSim)
+          else
+            fscore(theta.til, dataSim)
+        }
         obj.score <- likelihoodAsy:::.newscores(p, k, C.hat, C.til,
                                                 score.hat, score.til)
         c(obj.score$score.new.hat, obj.score$score.new.til, l1 - l0)
@@ -140,7 +148,6 @@ crr.rstar <- function(data, thetainit, floglik, fscore = NULL, fpsi, psival,
                 se.psi.hat = drop(se.psi.hat), theta.hyp = theta.til,
                 psi.hyp = psival, seed = para$seed)
   }
-  out$psidesc <- psidesc
   out$R <- R
   if ((!ronly) & (abs(r) < 0.1)) {
     cat("Value under testing close to the MLE - there might be a singularity in r*\n")

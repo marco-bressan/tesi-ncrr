@@ -8,7 +8,7 @@
 #' ---
 rm(list = ls())
 setwd("/home/marco/Nextcloud/tesi-ncrr/")
-#devtools::load_all()
+devtools::load_all()
 library("likelihoodAsy")
 library("tesi.ncrr")
 
@@ -21,6 +21,7 @@ DIR <- "../output-tesi/" # per l'esecuzione nel pacchetto
 
 #' # Simulazione basata sul problema di achana
 #| warning: false
+des <- ncrr.design(smoke.alarm)
 simu.pars <- list(alpha = c(0.53118984013899, 1.0431973777787, 0.00434231242384523,
                             2.36407165618289, 2.66293182986318, 2.7339581049579),
                   beta = c(0.948918313002282,
@@ -30,7 +31,7 @@ simu.pars <- list(alpha = c(0.53118984013899, 1.0431973777787, 0.004342312423845
                   sigma20 = 2.63212049308308,
                   sigma2 = 5.69469982077026) # stime MV dai dati originali
 simu.des <- do.call(simulate,
-                    append(list(ncrr.design(smoke.alarm), vcov.type = VCOVTYPE,
+                    append(list(des, vcov.type = VCOVTYPE,
                                 nsim = NSIM, seed = 212),
                            simu.pars))
 simu.pars.v <- tesi.ncrr:::crr.join.par(simu.pars) |> tesi.ncrr:::crr.transform.par()
@@ -54,15 +55,16 @@ par.h0 <- par.stime <- par.stime2 <- par.sd <- par.sd2 <- matrix(NA, length(init
 psi.r <- psi.rs <- psi.stime <- psi.sd <- numeric(NSIM)
 for (k in seq_len(NSIM)) {
   message(sprintf("%.2f%%\r", k / NSIM * 100))
-  llik.fun <- get.llik.from.design(simu.des[[k]], vcov.type = VCOVTYPE, echo = 0)
+  llik.fun <- get.llik.from.design(simu.des[[k]], vcov.type = VCOVTYPE, echo = 0,
+                                   use.data = TRUE)
   # ------ OTTIMIZZAZIONE ----
   opt1 <- optim(init, \(x) -llik.fun(x), method = "BFGS", hessian = TRUE)
   for (R in as.integer(300*exp(1:3))){
     message("--> R = ", R)
-    opt22 <- try(crr.rstar(simu.des[[k]], thetainit = init, floglik = llik.fun,
-                      fpsi = psi.fun,  psival = psi.fun(init),
-                      datagen = gendat.fun, seed = 22, constr.opt = "solnp", R = R,
-                      parallel = TRUE, trace = Inf))
+    opt2 <- try(crr.rstar(simu.des[[k]], thetainit = init, floglik = llik.fun,
+                          fpsi = psi.fun,  psival = psi.fun(init),
+                          datagen = gendat.fun, seed = 22, constr.opt = "solnp", R = R,
+                          parallel = FALSE, trace = Inf))
     if (!inherits(opt2, "try-error") && is.finite(opt2$rs)) break
   }
   saveRDS(list(optim = opt1, likasy = opt2),

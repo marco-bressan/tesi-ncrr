@@ -1,5 +1,5 @@
 devtools::load_all()
-data("smoking")
+data("smoke.alarm")
 
 object <- ncrr.design(smoking)
 

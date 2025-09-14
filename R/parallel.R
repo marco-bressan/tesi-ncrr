@@ -1,4 +1,5 @@
-.setup.parallel <- function(parallel, nclus, trace, seed, R, pb = NULL, trace.init.msg = NULL) {
+.setup.parallel <- function(parallel, nclus, trace, seed, R, pb = NULL, trace.init.msg = NULL,
+                            min.repl = 20) {
   seed.in <- if (length(seed) == 0)
     sample.int(.Machine$integer.max, 6)
   else rep_len(as.numeric(seed), 6)
@@ -16,9 +17,10 @@
     force(pb)
   }
   list(seed = seed.in, printfun = printfun, nclus = nclus,
-       printrepl = max(min(50, R / 10), 1))
+       printrepl = max(min(min.repl, R / 10), 1))
 }
 
+##' @export
 close.parallel <- function(con, ...) {
   if (is.null(con$printfun))
     invisible()
