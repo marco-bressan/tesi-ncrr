@@ -1,5 +1,6 @@
-.setup.parallel <- function(parallel, nclus, trace, seed, R, pb = NULL, trace.init.msg = NULL,
-                            min.repl = 20) {
+.parallel <- function(x, fun, export = NULL, initfun = NULL, exitfun = NULL, ...,
+                      parallel, nclus, trace, seed, pb = NULL,
+                      trace.init.msg = NULL, min.repl = 10) {
   seed.in <- if (length(seed) == 0)
     sample.int(.Machine$integer.max, 6)
   else rep_len(as.numeric(seed), 6)
@@ -16,16 +17,12 @@
         "\n")
     force(pb)
   }
-  list(seed = seed.in, printfun = printfun, nclus = nclus,
-       printrepl = max(min(min.repl, R / 10), 1))
-}
-
-##' @export
-close.parallel <- function(con, ...) {
-  if (is.null(con$printfun))
-    invisible()
-  env <- environment(con$printfun)
-  if (exists("pb", envir = env) && !is.null(env$pb))
-    close(env$pb)
-  invisible()
+  res <- snowFT::performParallel(nclus, export = export,
+                                 x = x, initfun = initfun, exitfun = exitfun,
+                                 fun = fun, printfun = printfun,
+                                 printrepl = max(min(min.repl, length(x) / 10), 1),
+                                 ft_verbose = trace > 1, seed = seed.in)
+  attr(res, "seed") <- seed.in
+  close(pb)
+  res
 }

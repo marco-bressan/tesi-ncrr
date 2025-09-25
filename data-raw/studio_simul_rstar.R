@@ -63,7 +63,7 @@ for (k in seq_len(NSIM)) {
     message("--> R = ", R)
     opt2 <- try(crr.rstar(simu.des[[k]], thetainit = init, floglik = llik.fun,
                           fpsi = psi.fun,  psival = psi.fun(init),
-                          datagen = gendat.fun, seed = 22, constr.opt = "solnp", R = R,
+                          datagen = gendat.fun, seed = 22, R = R,
                           parallel = FALSE, trace = Inf))
     if (!inherits(opt2, "try-error") && is.finite(opt2$rs)) break
   }

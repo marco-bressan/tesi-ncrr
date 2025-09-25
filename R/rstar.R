@@ -88,11 +88,10 @@ crr.rstar <- function(data, thetainit, floglik, fscore = NULL, fpsi, psival,
     out <- list(r = r, theta.hat = theta.hat, psi.hat = psi.hat,
                 theta.hyp = theta.til, psi.hyp = psival)
   if (!ronly) {
-    para <- .setup.parallel(parallel, nclus, trace, seed, R,
-                            pb = txtProgressBar(style = 3),
-                            trace.init.msg = "Starting Monte-carlo simulation")
-    Uhh <- snowFT::performParallel(
-      count = para$nclus,
+    Uhh <- .parallel(
+      parallel = parallel, nclus = nclus, trace = trace, seed = seed,
+      pb = txtProgressBar(style = 3),
+      trace.init.msg = "Starting Monte-carlo simulation",
       x = 1:R,
       fun = \(i) {
         dataSim <- datagen(theta.hat, data = data)
@@ -113,13 +112,8 @@ crr.rstar <- function(data, thetainit, floglik, fscore = NULL, fpsi, psival,
         obj.score <- likelihoodAsy:::.newscores(p, k, C.hat, C.til,
                                                 score.hat, score.til)
         c(obj.score$score.new.hat, obj.score$score.new.til, l1 - l0)
-      },
-      printfun = para$printfun,
-      printrepl = para$printrepl,
-      ft_verbose = trace > 1,
-      seed = para$seed
+      }
     )
-    close.parallel(para)
     meanAll <- Reduce("+", Uhh, init = rep(0, 2 * p + 1)) / R
     prodAll <- Reduce(\(u1, u2) u1 + tcrossprod(u2), Uhh,
                       init = matrix(0, 2 * p + 1, 2 * p + 1)) / R
@@ -146,7 +140,7 @@ crr.rstar <- function(data, thetainit, floglik, fscore = NULL, fpsi, psival,
                 rs = drop(rs), theta.hat = theta.hat, info.hat = j.hat,
                 se.theta.hat = se.theta.hat, psi.hat = psi.hat,
                 se.psi.hat = drop(se.psi.hat), theta.hyp = theta.til,
-                psi.hyp = psival, seed = para$seed)
+                psi.hyp = psival, seed = attr(Uhh, "seed"))
   }
   out$R <- R
   if ((!ronly) & (abs(r) < 0.1)) {

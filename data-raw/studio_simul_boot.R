@@ -48,50 +48,14 @@ psi.fun <- function(theta, data) {
   theta[["beta5"]]
 }
 
-# statistica radice del log-rapporto di verosimiglianza
-rp.stat <- function(dati.gen, psi0, init, param = match("beta5", names(init)),
-                    theta.hat = NULL, ..., exact = TRUE) {
-  # psi par d'interesse, lam di disturbo
-  if (is.null(theta.hat)) {
-    opt.theta <- optim(init, \(x) -llik.fun(x, dati.gen), method = "BFGS", hessian = TRUE)
-    l.hat <- -opt.theta$value
-    theta.hat <- opt.theta$par
-    J <- opt.theta$hessian
-  } else {
-    l.hat <- llik.fun(theta.hat, dati.gen)
-    J <- -optimHess(theta.hat, llik.fun)
-  }
-  if (exact) {
-    theta.psi <- Rsolnp::solnp(theta.hat, \(x) -llik.fun(x, dati.gen),
-                               eqfun = \(t) t[param], eqB = psi0,
-                               control = list(trace = 0))$pars
-    ## Equivalente ma più lenta:
-    # lam0 <- nlminb(theta.hat[-param], \(x) {
-    #   z <- theta.hat
-    #   z[param] <- psi0
-    #   z[-param] <- x
-    #   -llik.fun(z, dati.gen)
-    # })$par
-    # theta.psi <- theta.hat
-    # theta.psi[param] <- psi0
-    # theta.psi[-param] <- lam0
-  } else {
-    theta.psi <- theta.hat
-    theta.psi[param] <- psi0
-    # calcolo approssimato del parametro di disturbo
-    theta.psi[-param] <- theta.hat[-param] +
-      c(solve(J[-param, -param]) %*% J[-param, param] %*% (theta.hat[param] - psi0))
-  }
-  lp0 <- llik.fun(theta.psi, dati.gen)
-  rp <- unname(sign(theta.hat[param] - psi0) * sqrt(2) * sqrt(l.hat - lp0))
-  structure(rp, theta.hat = theta.hat)
-}
+
 
 # bootstrap sul vero dataset
 param <- match("beta5", names(simu.pars.v))
 llik.fun <- get.llik.from.design2(des, vcov.type = VCOVTYPE, echo = 0,
                                   use.data = TRUE, stop.on.fail = FALSE)
 
+#'
 #' Si testa l'ipotesi che beta5 != 1. Da HMA:
 #' eta_i = b + b_1 xi_i + e_i e_i ~ N (0, s^2) , i = 1,...,N
 #' Usually, the inferential interest is in the
@@ -99,33 +63,61 @@ llik.fun <- get.llik.from.design2(des, vcov.type = VCOVTYPE, echo = 0,
 #' control risk increases by a certain amount, the treatment group risk
 #' increases by the same amount. Thus, interesting cases are usually those
 #' where β1 deviates from 1.
-boot.rp <- crr.boot(des, rp.stat, R = 100,
-                    ran.gen = gendat.fun, mle = simu.pars.v, parallel = FALSE,
+#'
+boot.rp <- crr.boot(des, rp.stat, R = 500,
+                    ran.gen = gendat.fun, mle = simu.pars.v, parallel = TRUE,
                     seed = c(1998135100L, 2044097286L, 1091132551L,
                              966088075L, 1553350452L, 1303502678L),
-                    psi0 = 1, init = simu.pars.v, param = param, exact = FALSE)
+                    psi0 = 1, init = simu.pars.v, param = param, exact = TRUE,
+                    retain.data = TRUE)
+# controllo correttezza risultati
+args <- c(list(des), attributes(boot.rp$t0), boot.rp$.dots)
+debugonce(rp.stat)
+do.call(rp.stat, args)
+debugonce(rp.stat)
+for (i in sample.int(1000, 10)) {
+  args <- c(lapply(attributes(boot.rp)[c( "data", "theta.hat", "J" )], \(x) x[[i]]),
+            boot.rp$.dots)
+  names(args)[1] <- "dati.gen"
+  args[["psi0"]] <- 2
+  do.call(rp.stat, args)
+}
+# intervalli
+bgrid <- seq(-10, 20, length.out = 50)
 boot.stat <- Filter(is.finite, boot.rp$t)
 density(boot.stat) |> plot()
 abline(v = boot.rp$t0)
-
-bgrid <- seq(-10, 20, length.out = 50)
-r.val <- sapply(bgrid, \(x) rp.stat(des, x, init = simu.pars.v, param = param,
-                                    exact = FALSE))
+r.val <- lapply(bgrid, \(b) rp.stat(des, psi0 = b, init = simu.pars.v,
+                                    param = param, exact = FALSE))
 sigb2.val <- sapply(r.val, function(x) mean(boot.stat <= x))
 sigb2.val <- clamp(sigb2.val, eps = 1e-8)
 sm1 <- smooth.spline(qnorm(sigb2.val), bgrid)
 # intervalli di confidenza
 predict(sm1, qnorm(c(.975, .5, .025)))[["y"]]
-
+#| eval: true
+#| fig-cap: "Intervalli di confidenza bootstrap"
 plot(sm1$y, sm1$x, type = "l", main = "Radice con segno del log-RV",
      xlab = expression(beta[paste(5, ",", i)]),
      ylab = expression(r[P](beta[paste(5, ",", i)])))
 points(bgrid, qnorm(sigb2.val), pch = 20)
 abline(h = qnorm(c(0.025, 0.975)), lty = 3)
+abline(v = 1, lty = 2)
 
+#versione automatica
+boot.rp.ci1 <- crr.boot.ci(boot.rp, psi.grid = bgrid, within = FALSE, exact = FALSE, statistic = rp.stat)
+boot.rp.ci2 <- crr.boot.ci(boot.rp, psi.grid = bgrid, within = NA, statistic = rp.stat, exact = TRUE,
+                           parallel = TRUE)
+# within = NA, exact = T :  700 s
+# within = NA, exact = NA:  862 s
+# within = T , exact = F : 1659 s
+
+boot.rp.ci <- crr.boot.ci(boot.rp, psi.grid = bgrid[seq_along(bgrid)%%5 == 0],
+                          statistic = rp.stat,
+                          within = TRUE, exact = FALSE, parallel = TRUE)
+#| eval: false
 if (FALSE) {
   # differenza di performance tra la versione approssimata e quella esatta
-  # (ci mette un po')
+  # della statistica rp (ci mette un po')
   microbenchmark::microbenchmark(
     exact = sapply(samp, \(x) rp.stat(des, x, init = simu.pars.v, param = param)),
     not_exact = sapply(samp, \(x) rp.stat(des, x, init = simu.pars.v, param = param,
