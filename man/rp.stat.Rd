@@ -2,7 +2,7 @@
 % Please edit documentation in R/rp_stat.R
 \name{rp.stat}
 \alias{rp.stat}
-\title{Calcolo della statistica radice con segno del log-rapporto di verosimiglianza (\( r_p \))}
+\title{Calcolo della statistica log-RV}
 \usage{
 rp.stat(
   dati.gen,
@@ -13,51 +13,44 @@ rp.stat(
   J = NULL,
   ...,
   exact = NA,
-  par.only = FALSE
+  par.only = FALSE,
+  export = c("theta.hat", "l.hat", "J")
 )
 }
 \arguments{
-\item{dati.gen}{Lista o vettore di dati osservati da analizzare.}
+\item{dati.gen}{Oggetto di classe ncrr.design}
 
-\item{psi0}{Valore del parametro di interesse \(\psi\) sotto ipotesi nulla.}
+\item{psi0}{Valore del parametro di interesse $\psi$ sotto l'ipotesi nulla.}
 
 \item{init}{Vettore di valori iniziali per l'ottimizzazione dei parametri.}
 
-\item{param}{Indice (o nome) del parametro di interesse \(\psi\). Default: \code{match("beta5", names(init))}.}
+\item{param}{Indice del parametro di interesse $\psi$. Di default si
+considera il parametro "beta5".}
 
-\item{theta.hat}{(Opzionale) Stima libera massima della verosimiglianza. Se NULL viene stimata internamente.}
+\item{theta.hat}{(Opzionale) Punto di massima della verosimiglianza
+precalcolato. Se NULL viene stimata internamente.}
 
-\item{J}{(Opzionale) Matrice hessiana della funzione di log-verosimiglianza. Se NULL viene stimata internamente.}
+\item{J}{(Opzionale) Matrice hessiana della funzione di log-verosimiglianza
+precalcolata. Se NULL viene stimata internamente.}
 
 \item{...}{Argomenti aggiuntivi passati alla funzione di verosimiglianza.}
 
-\item{exact}{Se TRUE, usa ottimizzazione vincolata esatta; se FALSE, usa approssimazione di Taylor per i disturbi.}
+\item{exact}{Se TRUE, usa ottimizzazione vincolata esatta.}
 
-\item{par.only}{Se TRUE, restituisce solo i parametri ottimizzati sotto vincolo. Default: FALSE.
-\subsection{Valore}{
+\item{par.only}{Se TRUE, restituisce solo i parametri ottimizzati sotto
+vincolo}
 
-Restituisce la statistica \( r_p \) come oggetto numerico, con attributi \code{theta.hat} (stima libera dei parametri) e \code{J} (matrice hessiana). Se \code{par.only = TRUE}, restituisce il vettore dei parametri ottimizzati sotto vincolo.
+\item{export}{Nomi degli attributi da esportare: di default, \code{theta.hat}
+(stima libera dei parametri), \code{l.hat} (verosimiglianza nel punto di
+massimo) e \code{J} (matrice hessiana)}
 }
-
-\subsection{Esempio}{
-
-\if{html}{\out{<div class="sourceCode">}}\preformatted{# Suppose dati.gen is a vector of outcomes, init is a named vector of initial parameter guesses
-rp <- rp.stat(dati.gen, psi0 = 0.2, init)
-}\if{html}{\out{</div>}}
-}}
+\value{
+La statistica $r_p$ come oggetto numerico con gli attributi
+specificati in \code{export}. Se \code{par.only = TRUE}, restituisce il vettore dei
+parametri ottimizzati sotto vincolo.
 }
 \description{
-Questa funzione calcola la statistica radice con segno (\( r_p \)), basata sul log-rapporto di verosimiglianza, utile nell'inferenza parametrica condizionale e nell'analisi della significatività di parametri di interesse.
-}
-\details{
-\subsection{Dettagli teorici}{
-
-[
-r_p = \mathrm{sign}(\hat{\psi} - \psi_0) \sqrt{2(\ell(\hat{\theta}) - \ell(\tilde{\theta}))}
-]
-dove \(\ell(\hat{\theta})\) è la log-verosimiglianza nell'ipotesi libera, \(\ell(\tilde{\theta})\) è la log-verosimiglianza vincolata sotto \(\psi = \psi_0\), \(\hat{\psi}\) è la stima massima di \(\psi\) e \(\psi_0\) il valore fissato.
-}
-
-\subsection{Argomenti}{
-}
+Questa funzione calcola la statistica radice con segno ($r_p$), basata
+sul log-rapporto di verosimiglianza, utile nell'inferenza parametrica
+condizionale e nell'analisi della significatività di parametri di interesse.
 }

@@ -23,8 +23,10 @@
 
 \item{vcov.type}{Tipo di matrice di varianza-covarianza da usare}
 
-\item{...}{Parametri previsti per la specifica tipologia di matrice
-(un sottoinsieme di alpha, beta, mu0, sigma20, rho, sigma2)}
+\item{params}{Parametri previsti per la specifica tipologia di matrice (un
+sottoinsieme di alpha, beta, mu0, sigma20, rho, sigma2)}
+
+\item{...}{Variante per specificare i parametri come in \code{params}}
 }
 \value{
 Una lista di oggetti \code{ncrr.design} con i dati simulati.

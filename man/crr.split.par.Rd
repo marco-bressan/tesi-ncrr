@@ -2,11 +2,11 @@
 % Please edit documentation in R/crr_parameters.R
 \name{crr.split.par}
 \alias{crr.split.par}
-\title{separa i parametri di una ncrr}
+\title{Separa i parametri di una NCRR}
 \usage{
 crr.split.par(
   params,
-  np,
+  np = NA,
   transform = FALSE,
   fixed = NULL,
   parlen = attr(fixed, "parlen")
@@ -15,17 +15,21 @@ crr.split.par(
 \arguments{
 \item{params}{vettore numerico con i parametri in formato "lungo"}
 
-\item{np}{lunghezza degli alpha - 1}
+\item{np}{lunghezza degli alpha - 1. Settando a \code{NA} si tenta di calcolarlo
+sulla base dei nomi del vettore dei parametri.}
 
 \item{transform}{ritorna i parametri trasformati in scala logaritmica?}
 
-\item{fixed}{elenco di parametri da escludere}
-}
-\value{
-una lista con i parametri separati
+\item{fixed}{elenco di parametri da escludere. È raccomandato che si
+utilizzi l'output di \code{match.vcov.fixed()}}
+
+\item{parlen}{Vettore di interi avente i nomi corrispondenti ai parametri e
+la lunghezza degli stessi. Se non specificato, legge l'attributo 'parlen'
+da \code{fixed}. ATTENZIONE: per l'utilizzo standard, si consiglia di non
+settare esplicitamente questo parametro, ma affidarsi a \code{fixed}.}
 }
 \description{
-lo scopo di questa funzione è fornire un tramite tra la rappresentazione
+Lo scopo di questa funzione è fornire un tramite tra la rappresentazione
 dei parametri sottoforma di vettore voluta da \code{optim} e una più
 "user-friendly" in cui i parametri sono separati
 }

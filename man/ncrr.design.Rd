@@ -12,6 +12,9 @@ vengono interpretate come medie e dev.std dello studio, che viene quindi
 assunto ad outcome normale. In questo caso,
 $\hat\Gamma=\text{diag}(s_{ik}^2)$ \code{x$treatment} dev'essere un fattore: il
 primo livello sarà il \emph{baseline}.}
+
+\item{vcov.type}{Specifica opzionale della struttura di varianza-covarianza
+da usare per l'inferenza successiva}
 }
 \value{
 lista con i dettagli dell'esperimento

@@ -13,7 +13,7 @@
   rep = 1,
   transform = TRUE,
   fixed = NULL,
-  vcov.type = "normal"
+  vcov.type = attr(object, "vcov.type") \%||\% "normal"
 )
 }
 \arguments{
@@ -26,17 +26,18 @@
 \item{eps}{Tolleranza numerica per lo 0}
 
 \item{seed}{Seme per la generazione di un punto di partenza casuale. Se si
-passa un singolo valore, esso viene usato per la generazione di un seed diverso
-per ogni parametro (con NA tale generazione è casuale).
-Può essere un vettore con nomi dei parametri \code{c(alpha, beta, mu0, sigma20, rho, sigma2)}: per specificare quali NON
-inizializzare casualmente, mettere NA.
-Impostando \code{seed} a \code{NULL}, la funzione ritorna dei valori di default, deterministici.}
+passa un singolo valore, esso viene usato per la generazione di un seed
+diverso per ogni parametro (con NA tale generazione è casuale). Può
+essere un vettore con nomi dei parametri \code{c(alpha, beta, mu0, sigma20, rho, sigma2)}: per specificare quali NON inizializzare casualmente,
+mettere NA. Impostando \code{seed} a \code{NULL}, la funzione ritorna dei valori di
+default, deterministici.}
 
 \item{rep}{numero di random start. Ignorato se il \code{seed} è \code{NULL}}
 
 \item{transform}{applica le trasformazioni ai parametri?}
 
-\item{fixed}{elenco di nomi di parametri fissati (cioè esclusi dal vettore/matrice)}
+\item{fixed}{elenco di nomi di parametri fissati (cioè esclusi dal
+vettore/matrice)}
 
 \item{vcov.type}{preimpostazioni sui parametri fixed}
 }

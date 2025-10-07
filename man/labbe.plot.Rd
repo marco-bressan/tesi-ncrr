@@ -15,11 +15,14 @@ labbe.plot(
 )
 }
 \arguments{
-\item{object}{Un oggetto contenente i dati necessari per il grafico.}
+\item{object}{Un oggetto \code{crr.design} contenente i dati necessari per il
+grafico.}
 
-\item{legend.pos}{Posizione della legenda (default: "bottomright"). Imposta a NULL per non visualizzare la legenda.}
+\item{legend.pos}{Posizione della legenda (default: "bottomright").
+Impostare a NULL per non visualizzare la legenda.}
 
-\item{point.size.fattore}{Fattore di scala per la dimensione dei punti (default: 3).}
+\item{point.size.fattore}{Fattore di scala per la dimensione dei punti
+(default: 3).}
 
 \item{baseline.colore}{Colore della linea di baseline (default: "gray30").}
 }

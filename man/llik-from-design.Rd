@@ -11,7 +11,7 @@ get.llik.from.design(
   echo = 0,
   vcov.type = attr(object, "vcov.type"),
   use.data = FALSE,
-  stop.on.fail = TRUE
+  stop.on.fail = FALSE
 )
 
 get.llik.from.design2(
