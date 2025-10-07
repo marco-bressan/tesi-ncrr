@@ -55,20 +55,20 @@ llik.fun <- get.llik.from.design2(des, vcov.type = VCOVTYPE, echo = 0,
 
 #'
 #' Si testa l'ipotesi che beta5 != 1. Da HMA:
-#' eta_i = b + b_1 xi_i + e_i e_i ~ N (0, s^2) , i = 1,...,N
+#' eta_i = β_0 + β_1 xi_i + e_i       e_i ~ N (0, s^2) , i = 1,...,N
 #' Usually, the inferential interest is in the
 #' parameter β_1 associated with the underlying risk. If β_1 = 1, then if the
 #' control risk increases by a certain amount, the treatment group risk
 #' increases by the same amount. Thus, interesting cases are usually those
-#' where β1 deviates from 1.
+#' where β_1 deviates from 1.
 #'
 
-boot.rp <- crr.boot(des, rp.stat, R = 500,
-                    ran.gen = gendat.fun, mle = simu.pars.v, parallel = TRUE,
-                    seed = c(1998135100L, 2044097286L, 1091132551L,
-                             966088075L, 1553350452L, 1303502678L),
-                    psi0 = 1, init = simu.pars.v, param = param, exact = TRUE,
-                    retain.data = TRUE)
+# boot.rp <- crr.boot(des, rp.stat, R = 500,
+#                     ran.gen = gendat.fun, mle = simu.pars.v, parallel = FALSE,
+#                     seed = c(1998135100L, 2044097286L, 1091132551L,
+#                              966088075L, 1553350452L, 1303502678L),
+#                     psi0 = 1, init = simu.pars.v, param = param, exact = TRUE,
+#                     retain.data = TRUE)
 
 ## # controllo correttezza risultati
 ## args <- c(list(des), attributes(boot.rp$t0), boot.rp$.dots)
@@ -103,11 +103,10 @@ boot.rp <- crr.boot(des, rp.stat, R = 500,
 ## abline(v = 1, lty = 2)
 
 ## #versione automatica
-boot.rp.ci1 <- crr.boot.ci(boot.rp, psi.grid = bgrid, within = FALSE,
-                           exact = FALSE,
-                           statistic = rp.stat)
-boot.rp.ci2 <- crr.boot.ci(boot.rp, psi.grid = bgrid, within = NA,
-                           statistic = rp.stat, exact = TRUE, parallel = TRUE)
+## boot.rp.ci1 <- crr.boot.ci(boot.rp, psi.grid = bgrid, within = FALSE, exact = FALSE,
+##                            statistic = rp.stat)
+## boot.rp.ci2 <- crr.boot.ci(boot.rp, psi.grid = bgrid, within = NA, statistic = rp.stat,
+##                            exact = TRUE, parallel = TRUE)
 
 # RISULTATI TEMPISTICHE per 1 elemento della griglia
 # within = NA, exact = T :  700 s
@@ -121,7 +120,8 @@ boot.rp.ci2 <- crr.boot.ci(boot.rp, psi.grid = bgrid, within = NA,
 if (FALSE) {
   # differenza di performance tra la versione approssimata e quella esatta
   # della statistica rp (ci mette un po')
-  microbenchmark::microbenchmark(
+  samp <- bgrid[which(seq_along(bgrid) %% 10 == 0)]
+  bench <- microbenchmark::microbenchmark(
     exact = sapply(samp, \(x) rp.stat(des, x, init = simu.pars.v, param = param)),
     not_exact = sapply(samp, \(x) rp.stat(des, x, init = simu.pars.v, param = param,
                                           exact = FALSE)),
@@ -131,39 +131,57 @@ if (FALSE) {
     }
   )
 }
+
 #| eval: false
 # simulazione
 lik.vals <- lik.vals2 <- numeric(NSIM)
 init <- getInitial(simu.des[[1]], vcov.type = VCOVTYPE)
 par.J <- par.J2 <- array(NA, c(length(init), length(init), NSIM))
 par.h0 <- par.stime <- par.stime2 <- par.sd <- par.sd2 <- matrix(NA, length(init), NSIM)
-psi.rs <- psi.stime <- psi.sd <- numeric(NSIM)
+psi.rs <- psi.r <- psi.stime <- psi.sd <- numeric(NSIM)
+psi.rboot <- matrix(NA, 3, NSIM)
+rboot.splines <- vector("list", nsim)
 
-for (k in 57:NSIM) {
-  message(sprintf("%.2f%%\r", k / NSIM * 100))
-  opt1 <- crr.rstar(simu.des[[k]], thetainit = init, floglik = llik.fun,
-                    fpsi = psi.fun,  psival = psi.fun(init),
-                    datagen = gendat.fun, ronly = TRUE)
-  boot.rp.cur <- try(crr.boot(simu.des[[k]], rp.stat, R = 500, sim = "parametric",
-                              ran.gen = gendat.fun, mle = opt1$theta.hat, parallel = TRUE,
-                              seed = c(1998135100L, 2044097286L, 1091132551L,
-                                       966088075L, 1553350452L, 1303502678L),
-                              psi0 = simu.pars.v[param], init = opt1$theta.hat,
-                              param = param))
-  rs1 <- crr.rstar(simu.des[[k]], thetainit = init, floglik = llik.fun,
-                   fpsi = psi.fun,  psival = psi.fun(init),
-                   seed = c(1998135100L, 2044097286L, 1091132551L,
-                            966088075L, 1553350452L, 1303502678L),
-                   datagen = gendat.fun, parallel = TRUE, R = 500)
-  boot.rp.cur.ci1 <- try(crr.boot.ci(boot.rp.cur, psi.grid = bgrid,
-                                     within = FALSE, exact = FALSE, statistic = rp.stat))
-  if (is.recursive(boot.rp.cur.ci1))
-    boot.rp.cur.ci1$boot <- boot.rp.cur
-  saveRDS(list(rs1, boot.rp.cur.ci1), file = file.path(DIR, paste0("boot_rp_", k, "_", as.integer(Sys.time()), ".rds")))
+fs <- list.files(DIR, pattern = "^boot_rp_")
+fnames <- do.call(rbind, strsplit(fs, "[._]"))
+dedup <- tapply(fnames[, 4], fnames[, 3], \(x) max(as.integer(x)))
+dedup.i <- match(dedup, as.integer(fnames[, 4]))
+fs <- fs[dedup.i]
+fnames <- fnames[dedup.i, ]
+for (i in seq_along(fs)) {
+  # --- RECUPERO DA DISCO ---
+  k <- as.integer(fnames[i, 3])
+  obj <- readRDS(file.path(DIR, fs[i]))
+  # ------ REGISTRAZIONE RISULTATI ----
+  lik.vals[k] <- llik.fun(obj[[1]]$theta.hat, simu.des[[k]])
+  par.stime[, k] <- tesi.ncrr:::crr.transform.par(obj[[1]]$theta.hat, inverse = TRUE)
+  par.J[,,k] <- obj[[1]]$info.hat
+  par.sd[, k] <- obj[[1]]$se.theta.hat
+  par.h0[, k] <- obj[[1]]$theta.hyp
+  # stime di psi
+  psi.r[k] <- obj[[1]]$r
+  psi.rs[k] <- obj[[1]]$rs
+  psi.stime[k] <- obj[[1]]$psi.hat
+  psi.sd[k] <- obj[[1]]$se.psi.hat
+  print(obj[[1]]$rs)
+  if (!inherits(obj[[2]], "try-error"))
+    psi.rboot[, k] <- obj[[2]]$ic
 }
 
-dimnames(par.h0) <- dimnames(par.stime) <- dimnames(par.stime2) <-
-  dimnames(par.sd) <- dimnames(par.sd2) <-
-  list(pars = names(init), repl = seq_along(simu.des))
-# fine simulazione
-save.image(file.path(DIR, "sim1provv"))
+psi.rboot[2, ] |> na.omit() |> density() |> plot()
+
+
+({
+  ic <- t(psi.rboot[c(2, 1, 3), ])
+  ic <- ic[!is.na(ic[, 1]), ]
+  rpvera <- rp.stat(des, 1, init)
+  fuori <- rpvera < ic[, 2] | rpvera > ic[, 3]
+  plot(ic[, 1], type = "n", main = "r_p per H0: beta_5 == 1",
+       ylim = quantile(ic, c(.01, .99), na.rm = TRUE),
+       sub = sprintf("Copertura empirica: %.2f%%",
+                     mean(1 - fuori, na.rm = TRUE) * 100))
+  segments(x0 = seq_len(nrow(ic)), y0 = ic[, 2], y1 = ic[, 3], lwd = 1.5,
+           col = 1 + fuori)
+  points(ic[, 1], pch = 16, col = 1 + fuori)
+  abline(h = rpvera, lty = 2, col = "blue")
+})

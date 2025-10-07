@@ -1,3 +1,30 @@
+##' `crr.boot` calcola la stima bootstrap parametrica di una statistica e
+##' `crr.boot.ci` riporta gli intervalli di confidenza bootstrap.
+##'
+##' @title Esperimento bootstrap per design NCRR.
+##' @param data Un oggetto `crr.design`. Nel caso di `crr.boot.ci`, può essere
+##'   anche un oggetto di classe `crr.boot` (si vedano i dettagli)
+##' @param statistic Funzione che calcola la statistica e che prende in input
+##'   come primo argomento i dati e come secondo argomento il valore in cui
+##'   essere calcolata.
+##' @param R Numero di iterazioni
+##' @param ran.gen Funzione che dati in input i dati e la stima puntuale dei
+##'   parametri genera un nuovo dataset
+##' @param mle Stima dei parametri per i dati di partenza
+##' @param retain.data Se TRUE, tiene in memoria tutti i dataset generati
+##'   nell'attributo "data" dell'oggetto finale
+##' @param ... Eventuali ulteriori argomenti passati alla statistica.
+##' @param parallel Indica se utilizzare il calcolo parallelo
+##' @param nclus Numero di cluster da usare per il calcolo parallelo
+##' @param trace Intero non negativo che indica l'ammontare di informazioni di
+##'   debug stampate a schermo. Se maggiore di zero, stampa una barra di
+##'   avanzamento per la procedura bootstrap.
+##' @param seed Il seed da usare per riprodurre l'esperimento. Può essere un
+##'   singolo intero od un vettore di sei elementi
+##' @return *Completare...*
+##' @author Marco Bressan
+##' @rdname crr-boot
+##' @export
 crr.boot <- function(data, statistic, R, ran.gen, mle, retain.data = TRUE, ...,
                      parallel = FALSE, nclus = NA, trace = 1, seed = NULL) {
   opt.list <- list(...)
@@ -82,6 +109,8 @@ crr.boot <- function(data, statistic, R, ran.gen, mle, retain.data = TRUE, ...,
   l1
 }
 
+##' @rdname crr-boot
+##' @export
 crr.boot.ci <- function(data, statistic, R, ran.gen, mle, ..., within = FALSE,
                         signif = 0.05, side = c("lower", "upper", "both"),
                         interval, grid.len,
@@ -90,7 +119,8 @@ crr.boot.ci <- function(data, statistic, R, ran.gen, mle, ..., within = FALSE,
                         ignore.attrs = FALSE) {
   side <- match.arg(side)
   basic.args <- c("data", "statistic", "R", "ran.gen", "mle")
-  dots <- boot.res <- list()
+  out <- dots <- boot.res <- list()
+  class(out) <- "boot.crr.ci"
   if (inherits(data, "crr.boot")) {
     for (i in basic.args[-1])
       if (missingArg(as.symbol(i), eval = TRUE)) assign(i, data[[i]], environment())
@@ -108,6 +138,7 @@ crr.boot.ci <- function(data, statistic, R, ran.gen, mle, ..., within = FALSE,
     boot.res <- crr.boot(data, statistic, R, ran.gen, mle, ...,
                          parallel = parallel, nclus = nclus, trace = trace,
                          seed = seed)
+    out$boot <- boot.res
   }
   dots <- .mergelist(dots, list(...)) # i '...' sovrascrivono gli altri argomenti
   t0 <- {
@@ -208,12 +239,42 @@ crr.boot.ci <- function(data, statistic, R, ran.gen, mle, ..., within = FALSE,
       inner.boot <- rbind(r.val, inner.boot)
     sigb2.val <- apply(inner.boot, 2, \(x) .poss(x[1], x[-1], side, na.rm = TRUE))
   }
-  browser()
   sigb2.val <- clamp(sigb2.val, eps = 1e-8)
-  sm1 <- smooth.spline(qnorm(sigb2.val), psi.grid)
+  out$spline <- smooth.spline(qnorm(sigb2.val), psi.grid)
   # intervalli di confidenza
   ic.vals <- c(signif / 2, .5, 1 - signif / 2)
   if (side == "lower") ic.vals <- rev(ic.vals)
-  ic <- predict(sm1, qnorm(ic.vals))[["y"]]
-  structure(list(ic = ic, spline = sm1), class = "crr.boot.ci")
+  out$ic <- predict(out$spline, qnorm(ic.vals))[["y"]]
+  out
+}
+
+plot.crr.boot <- function(x, ...) {
+  multiv <- is.null(dim(x$t))
+  if (multiv) {
+    plot(density(x$t), ...)
+    abline(v = x$t0, col = "red", lty = 2)
+  } else {
+    for (j in seq_len(ncol(x$t))) {
+      plot(density(x$t[, j]), ...)
+      abline(v = x$t0[j], col = "red", lty = 2)
+    }
+  }
+}
+
+
+plot.crr.boot.ci <- function(x, signif = NA, main = "Radice con segno del log-RV",
+                             psi.name = expression(psi), show.points = TRUE, ...) {
+  vals <- {
+    if (anyNA(signif))
+      x$ic[-2]
+    else
+      c(signif / 2, 1 - signif / 2)
+  }
+  plot(x$y, x$x, type = "l", main = main,
+       xlab = psi.name,
+       ylab = substitute(r[P](PSI), list(PSI = psi.name)))
+  if (show.points)
+    points(x$y, x$x, pch = 20)
+  abline(h = qnorm(vals), lty = 3)
+  abline(v = 1, lty = 2)
 }

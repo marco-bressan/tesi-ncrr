@@ -16,6 +16,7 @@
   })
   pieces <- list(
     `__GETPARS__` = quote({
+      pold <- params
       changed <- !is.null(fixed)
       if (length(names(fixed.default)) > 0) {
         fixed[names(fixed.default)] <- fixed.default
@@ -57,8 +58,8 @@
     }, list(TERMINATE_NA = TERMINATE_NA))
   )
   arglist <- append(alist(params =, fixed = NULL),
-                   if (use.data) alist(data = object) else GETDATA,
-                   after = 1)
+                    if (use.data) alist(data = object) else GETDATA,
+                    after = 1)
   if (use.data) {
     GETDATAexpr <- append(as.symbol("{"),
                           .mapply(\(expr, vname) call("<-", as.name(vname), expr),
@@ -103,7 +104,7 @@
 ##' @author Marco Bressan
 get.llik.from.design <- function(object, transform = TRUE, echo = 0,
                                  vcov.type = attr(object, "vcov.type"),
-                                 use.data = FALSE, stop.on.fail = TRUE) {
+                                 use.data = FALSE, stop.on.fail = FALSE) {
   np <- length(tt <- unique(do.call(c, object$design))) - 1
   fixed.default <- NULL
   if (is.null(vcov.type))
@@ -118,9 +119,12 @@ get.llik.from.design <- function(object, transform = TRUE, echo = 0,
              fixed = NULL) {
       `__GETPARS__`
       ll <- mapply(\(t, m, Si, Gi) {
-        chl <- try(chol(S <- Si + Gi))
-        if (inherits(chl, "try-error"))
-          chl <- as.matrix(as(Matrix::Cholesky(S),"dtrMatrix"))
+        chl <- try(chol(S <- Si + Gi), silent = echo <= 3)
+        if (inherits(chl, "try-error")) {
+          #browser()
+          return(NaN)
+          #chl <- as.matrix(as(Matrix::Cholesky(S),"dtrMatrix"))
+        }
         chl <- mvtnorm::ltMatrices(chl[which(upper.tri(chl, diag = TRUE))], diag = TRUE)
         mvtnorm::ldmvnorm(t, mean = m, chol = chl)
       }, y, mu, Sigma, Gamma)
@@ -160,7 +164,7 @@ get.llik.from.design2 <- function(object, transform = TRUE, echo = 0,
       `__GETPARS__`
       cholSigt <- mvtnorm::ltMatrices(
         object = mapply(\(Si, Gi) {
-          chl <- try(chol(S <- Si + Gi))
+          chl <- try(chol(S <- Si + Gi), silent = echo <= 3)
           if (inherits(chl, "try-error"))
             chl <- as.matrix(as(Matrix::Cholesky(S),"dtrMatrix"))
           chl[which(upper.tri(Si, diag = TRUE))]

@@ -1,7 +1,17 @@
-### funzioni di prova ########
-# studio multi-design con baseline '0'
-
-# alpha = vettore con gli \alpha_bj, idem per beta, mu0 media di \xi
+##' Funzioni a basso livello per il calcolo dei parametri della distribuzione
+##' marginale (normale) della NCRR
+##'
+##' NOTA: le funzioni `crr.vcov.*()` sono state deprecate e non dovrebbero più
+##' essere utilizzate
+##'
+##' @title Parametri per la verosimiglianza normale
+##' @param params Il vettore dei parametri.
+##' @param design Un vettore intero indicante il design dello studio in esame.
+##' @return Un vettore od una matrice di parametri della verosimiglianza dello
+##'   specifico studio.
+##' @author Marco Bressan
+##' @export
+##' @rdname crr-params-norm-low
 crr.mean <- function(params, design = c(0, 1)) {
   stopifnot("lunghezza sbagliata per `alpha`" =
               length(params$alpha) == length(design) - (0 %in% design),
@@ -10,15 +20,17 @@ crr.mean <- function(params, design = c(0, 1)) {
   if (!0 %in% design) {
     if (USA_MIA_MODELLAZIONE) {
       message("Chiamata mia implementazione!")
-      # in questa parte del codice voglio provare ad implementare la mia versione della ncrr
-      # senza baseline. si può cambiare settando la variabile globale (a livello di pacchetto)
-      # pari a FALSE: in questo caso si userà la parametrizzazione di Guolo
-      # !!! SI ASSUME CHE b SIA IN PRIMA POSIZIONE !!!
+      # in questa parte del codice voglio provare ad implementare la mia
+      # versione della ncrr senza baseline. si può cambiare settando la
+      # variabile globale (a livello di pacchetto) pari a FALSE: in questo caso
+      # si userà la parametrizzazione di Guolo !!! SI ASSUME CHE b SIA IN PRIMA
+      # POSIZIONE !!!
       mu_ib <- params$alpha[1] + params$beta[1] * params$mu0
       mu <- c(mu_ib, params$alpha[-1] - params$alpha[1] + (params$beta[-1] - params$beta[1]) * mu_ib)
       return(mu)
     }
-    # a dispetto del nome, integra anche il calcolo delle medie negli studi non-baseline
+    # a dispetto del nome, integra anche il calcolo delle medie negli studi
+    # non-baseline
     #browser()
     stopifnot(length(params$alpha) == 2) #TODO: se più di 2 studi baseline?!
     return(c(diff(params$alpha), diff(rev(params$alpha))) + c(diff(params$beta), diff(rev(params$beta))) * params$mu0)
@@ -26,14 +38,15 @@ crr.mean <- function(params, design = c(0, 1)) {
   c(0, params$alpha) + c(1, params$beta) * params$mu0
 }
 
-# sigma2 vettore varianze di dim compatibile con beta
+##' @rdname crr-params-norm-low
 crr.vcov <- function(params, design = c(0, 1)) {
   if (min(design) > 0) {
     if (USA_MIA_MODELLAZIONE) {
-      # in questa parte del codice voglio provare ad implementare la mia versione della ncrr
-      # senza baseline. si può cambiare settando la variabile globale (a livello di pacchetto)
-      # pari a FALSE: in questo caso si userà la parametrizzazione di Guolo
-      # !!! SI ASSUME CHE b SIA IN PRIMA POSIZIONE !!!
+      # in questa parte del codice voglio provare ad implementare la mia
+      # versione della ncrr senza baseline. si può cambiare settando la
+      # variabile globale (a livello di pacchetto) pari a FALSE: in questo caso
+      # si userà la parametrizzazione di Guolo !!! SI ASSUME CHE b SIA IN PRIMA
+      # POSIZIONE !!!
       betab <- params$beta[-1] - params$beta[1]
       sigmab <- sqrt(params$rho * params$sigma2[-1] * params$sigma2[1])
       if (any(!is.finite(sigmab))) {
@@ -112,19 +125,31 @@ crr.par.idx <- function(np, fixed = NULL, parlen = NULL, lengths = FALSE) {
   return(ret)
 }
 
-crr.transform.par <- function(value, which = NULL, inverse = FALSE, ..., split) {
-  if (is.null(value))
+##' Trasforma i parametri rispettandone il formato (lista o vettore)
+##'
+##' @title Trasformazione dei parametri
+##' @param params Vettore o lista dei parametri
+##' @param which Se `params` non ha i nomi, indica di quale parametro si tratta
+##'   (assumendo che tutto il vettore appartenga ad uno stesso parametro, ad
+##'   esempio `alpha`)
+##' @param inverse Effettua la trasformazione inversa (da scala trasformata ad
+##'   originale)?
+##' @return I parametri trasformati, nello stesso formato di `params` (lista o
+##'   vettore).
+##' @author Marco Bressan
+##' @rdname crr-params
+crr.transform.par <- function(params, which = NULL, inverse = FALSE) {
+  if (is.null(params))
     return()
-
   if (is.null(which)) {
-    stopifnot("`value` senza nomi" = !is.null(names(value)))
-    which <- names(value)
+    stopifnot("`params` senza nomi" = !is.null(names(params)))
+    which <- names(params)
   }
   trans <- .mapply(.ptrans,
-                   list(value, names(value)),
+                   list(params, names(params)),
                    MoreArgs = list(inverse = inverse))
-  names(trans) <- names(value)
-  if (!is.list(value) || !isTRUE(split))
+  names(trans) <- names(params)
+  if (!is.list(params))
     trans <- unlist(trans)
   trans
 }
@@ -137,7 +162,9 @@ crr.transform.par <- function(value, which = NULL, inverse = FALSE, ..., split) 
   else
     x
 }
-
+##' @param what Nomi dei parametri da rimuovere
+##' @export
+##' @rdname crr-params
 crr.remove.par <- function(params, what) {
   rem <- c(sigma2 = "sigma2[1-9]+", sigma20 = "sigma20",
            mu0 = "mu0", alpha = "alpha", beta = "beta",
@@ -158,27 +185,36 @@ crr.remove.par <- function(params, what) {
   lapply(plist, unname)
 }
 
-##' lo scopo di questa funzione è fornire un tramite tra la rappresentazione
+##' Lo scopo di questa funzione è fornire un tramite tra la rappresentazione
 ##' dei parametri sottoforma di vettore voluta da `optim` e una più
 ##' "user-friendly" in cui i parametri sono separati
 ##'
-##' @title separa i parametri di una ncrr
+##' @title Separa i parametri di una NCRR
 ##' @param params vettore numerico con i parametri in formato "lungo"
-##' @param np lunghezza degli alpha - 1
+##' @param np lunghezza degli alpha - 1. Settando a `NA` si tenta di calcolarlo
+##'   sulla base dei nomi del vettore dei parametri.
 ##' @param transform ritorna i parametri trasformati in scala logaritmica?
-##' @param fixed elenco di parametri da escludere
-##' @return una lista con i parametri separati
+##' @param fixed elenco di parametri da escludere. È raccomandato che si
+##'   utilizzi l'output di `match.vcov.fixed()`
+##' @param parlen Vettore di interi avente i nomi corrispondenti ai parametri e
+##'   la lunghezza degli stessi. Se non specificato, legge l'attributo 'parlen'
+##'   da `fixed`. ATTENZIONE: per l'utilizzo standard, si consiglia di non
+##'   settare esplicitamente questo parametro, ma affidarsi a `fixed`.
 ##' @author Marco Bressan
-crr.split.par <- function(params, np, transform = FALSE, fixed = NULL,
+##' @export
+crr.split.par <- function(params, np = NA, transform = FALSE, fixed = NULL,
                           parlen = attr(fixed, "parlen")) {
   ## if (length(fixed) == 1 && is.na(fixed))
   ##   fixed <- setdiff(PNAMES,
   ##                    stringr::str_extract(names(params),
   ##                                         paste(PNAMES, collapse = "|")))
+  if (anyNA(np))
+    np <- length(grep("beta", names(params)))
   pposs <- crr.par.idx(np, fixed = fixed, parlen = parlen)
   plist <- NULL
   if (is.matrix(params)) {
     if (max(pposs) != ncol(params)) {
+      cat("ERRORE! Stampo gli indici dei parametri che mi aspetto di trovare:")
       print((pposs))
       print(colnames(params))
       if (!is.null(names(params)) && length(ga <- grep("alpha", names(params))) != np)
@@ -190,6 +226,7 @@ crr.split.par <- function(params, np, transform = FALSE, fixed = NULL,
     extrfn <- \(x, i) x[, i]
   } else {
     if (max(pposs) != length(params)) {
+      cat("ERRORE! Stampo gli indici dei parametri che mi aspetto di trovare:")
       print((pposs))
       print(names(params))
       stop("`params` has wrong dimesion ",
@@ -209,6 +246,9 @@ crr.split.par <- function(params, np, transform = FALSE, fixed = NULL,
   lapply(plist, unname)
 }
 
+##' @param ... Può essere usato al posto di `params` per specificare i parametri
+##' @export
+##' @rdname crr-params
 crr.join.par <- function(params, ..., transform = FALSE) {
   if (missing(params)) {
     params <- list(...)[PNAMES]

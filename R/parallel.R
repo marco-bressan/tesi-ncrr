@@ -21,7 +21,8 @@
                                  x = x, initfun = initfun, exitfun = exitfun,
                                  fun = fun, printfun = printfun,
                                  printrepl = max(min(min.repl, length(x) / 10), 1),
-                                 ft_verbose = trace > 1, seed = seed.in)
+                                 ft_verbose = trace > 1, seed = seed.in,
+                                 cltype = "SOCK")
   attr(res, "seed") <- seed.in
   close(pb)
   res

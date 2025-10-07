@@ -9,6 +9,8 @@
 #'   $\hat\Gamma=\text{diag}(s_{ik}^2)$ `x$treatment` dev'essere un fattore: il
 #'   primo livello sarà il _baseline_.
 #'
+#' @param vcov.type Specifica opzionale della struttura di varianza-covarianza
+#'   da usare per l'inferenza successiva
 #' @export
 ncrr.design <- function(x, vcov.type = NULL) {
   treatments <- levels(x$treatment)
@@ -101,17 +103,21 @@ plot.ncrr.design <- function(object, vertex.size.factr = 50,
 #' Crea un grafico di L'Abbé plot a partire da un oggetto
 #' di classe `ncrr.design`
 #'
-#' @param object Un oggetto contenente i dati necessari per il grafico.
-#' @param point.size.fattore Fattore di scala per la dimensione dei punti (default: 3).
+#' @param object Un oggetto `crr.design` contenente i dati necessari per il
+#'   grafico.
+#' @param point.size.fattore Fattore di scala per la dimensione dei punti
+#'   (default: 3).
 #' @param baseline.colore Colore della linea di baseline (default: "gray30").
-#' @param legend.pos Posizione della legenda (default: "bottomright"). Imposta a NULL per non visualizzare la legenda.
+#' @param legend.pos Posizione della legenda (default: "bottomright").
+#'   Impostare a NULL per non visualizzare la legenda.
 #'
 #' @examples
 #' object <- ncrr.design(smoking)
 #' labbe.plot(object)
 #'
 #' @export
-labbe.plot <- function(object, cex.factr = 3, abline.col = "gray30", legend.pos = "bottomright",
+labbe.plot <- function(object, cex.factr = 3, abline.col = "gray30",
+                       legend.pos = "bottomright",
                        xylims = NULL,
                        xlab = "Perc. of events in control group",
                        ylab = "Perc. of events in treatment group") {
@@ -141,7 +147,7 @@ labbe.plot <- function(object, cex.factr = 3, abline.col = "gray30", legend.pos 
   pct.data <- pct.data[order(pct.data$n.2, decreasing = TRUE), ] # per la sovrapposizione dei punti
 
   # Creazione del grafico
-  if (is.null(xylims)) xylims <- range(c(pct.1, pct.2))
+  if (is.null(xylims)) xylims <- range(c(pct.data$pct.1, pct.data$pct.2))
   plot(0, 0, type = "n", xlim = xylims, ylim = xylims, xlab = xlab, ylab = ylab)
   # ciclo un punto alla volta per evitare che
   cexs <- with(pct.data, 1 + cex.factr * (n.2 / max(n.2)))
@@ -162,55 +168,35 @@ labbe.plot <- function(object, cex.factr = 3, abline.col = "gray30", legend.pos 
   }
 }
 
-
-
-match.vcov.type <- function(type = c("normal", "achana", "equivar", "simple")) {
-  match.arg(type, several.ok = FALSE)
-}
-
-match.vcov.fun <- function(type) {
-  type <- match.vcov.type(type)
-  if (type == "normal")
-    return(crr.vcov)
-  get(paste("crr.vcov", type, sep = "."), envir = asNamespace("tesi.ncrr"))
-}
-
-match.vcov.fixed <- function(type, value = FALSE, np) {
-  type <- match.vcov.type(type)
-  ff <- switch(type, achana = "rho", equivar = "sigma2", simple = c("rho", "sigma2"))
-  if (isTRUE(value)) {
-    ff <- as.list(setNames(nm = ff))
-    if (type == "simple") {
-      ff[["sigma2"]] <- rep(NA, np)
-      ff[["rho"]] <- NA
-    } else if (type == "achana") {
-      ff[["rho"]] <- .5
-    } else if (type == "equivar") {
-      ff[["sigma2"]] <- rep(NA, np)
-    }
-  }
-  if (type == "achana") {
-    attr(ff, "parlen") <- c("sigma2" = 1)
-  }
-  ff
-}
-
-
 #' @export
 #' @method subset ncrr.design
 subset.ncrr.design <- function(x, subset, ...) {
   if (is.null(idx <- names(x$design)))
     idx <- seq_along(x$design)
-  subs <- stats::na.omit(match(subset, idx))
-  if (anyNA(subs)) {
+  subset <- substitute(subset)
+  callnm <- as.character(subset[[1]])
+  inverse <- callnm %in% c("-", "!")
+  if (is.call(subset) && inverse)
+    subset <- subset[[2]]
+  subset <- eval(subset, parent.frame())
+  subs <- match(subset, idx, nomatch = 0)
+  if (any(subs == 0)) {
     warning("Forniti identificatori di studio sconosciuti: ",
             paste(unique(subset[attr(subs, "na.action")]), collapse = ", "))
   }
+  # tengo separati indici per x e per i design perchè potrebbero essere in
+  # ordine diverso
+  subsx <- which(x$x$study.id %in% idx[subs])
   idx <- which(rep(seq_along(x$design), lengths(x$design)) %in% subs)
+  if (inverse) {
+    subs <- -subs
+    idx <- -idx
+    subsx <- -subsx
+  }
   x$theta <- x$theta[idx]
   x$gamma <- x$gamma[idx]
   x$design <- x$design[subs]
-
+  x$x <- x$x[subsx, ]
   return(x)
 }
 
@@ -223,15 +209,16 @@ subset.ncrr.design <- function(x, subset, ...) {
 ##' @param ... Non usati
 ##' @param eps Tolleranza numerica per lo 0
 ##' @param seed Seme per la generazione di un punto di partenza casuale. Se si
-##'   passa un singolo valore, esso viene usato per la generazione di un seed diverso
-##'   per ogni parametro (con NA tale generazione è casuale).
-##'   Può essere un vettore con nomi dei parametri `c(alpha,
-##'   beta, mu0, sigma20, rho, sigma2)`: per specificare quali NON
-##'   inizializzare casualmente, mettere NA.
-##'   Impostando `seed` a `NULL`, la funzione ritorna dei valori di default, deterministici.
+##'   passa un singolo valore, esso viene usato per la generazione di un seed
+##'   diverso per ogni parametro (con NA tale generazione è casuale). Può
+##'   essere un vettore con nomi dei parametri `c(alpha, beta, mu0, sigma20,
+##'   rho, sigma2)`: per specificare quali NON inizializzare casualmente,
+##'   mettere NA. Impostando `seed` a `NULL`, la funzione ritorna dei valori di
+##'   default, deterministici.
 ##' @param rep numero di random start. Ignorato se il `seed` è `NULL`
 ##' @param transform applica le trasformazioni ai parametri?
-##' @param fixed elenco di nomi di parametri fissati (cioè esclusi dal vettore/matrice)
+##' @param fixed elenco di nomi di parametri fissati (cioè esclusi dal
+##'   vettore/matrice)
 ##' @param vcov.type preimpostazioni sui parametri fixed
 ##'
 ##' @return un vettore o una matrice con i punti di partenza casuali (se rep>1)
@@ -239,7 +226,7 @@ getInitial.ncrr.design <- function(object, data, ..., eps = 1e-10,
                                    seed = if (rep > 1) NA,
                                    rep = 1, transform = TRUE,
                                    fixed = NULL,
-                                   vcov.type = "normal") {
+                                   vcov.type = attr(object, "vcov.type")%||%"normal") {
   vcov.type <- match.vcov.type(vcov.type)
   if (!missing(data)) .NotYetUsed("data", error = FALSE)
   dd <- object$design

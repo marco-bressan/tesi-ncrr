@@ -1,0 +1,168 @@
+---
+title: "README"
+subtitle: "`tesi-ncrr` - Progetto di tesi sulla Network Control Risk Regression"
+format:
+  pdf:
+    fig-width: 8
+    fig-height: 6
+execute:
+  eval: true
+  echo: true
+  output: true
+---
+
+
+# Dati
+
+Il pacchetto contiene alcuni dataset estratti dai seguenti paper:
+
+- `smoking`: cessazione dell'abitudine al fumo tramite 3 diverse tipologie
+di assistenza ( esempio 1 in Noma, H., Nagashima, K., Maruo, K., Gosho, M.,
+& Furukawa, T. A. (2018). Bartlett‐type corrections and bootstrap
+adjustments of likelihood‐based inference methods for network meta‐analysis.
+Statistics in Medicine, 37(7), 1178–1190. https://doi.org/10.1002/sim.7578).
+
+- `morphine`: efficacia di 3 terapie antidolorifiche (esempio 2 in Achana,
+F. A., Cooper, N. J., Dias, S., Lu, G., Rice, S. J. C., Kendrick, D., &
+Sutton, A. J. (2013). Extending methods for investigating the relationship
+between treatment effect and baseline risk from pairwise meta‐analysis to
+network meta‐analysis. Statistics in Medicine, 32(5), 752–771.
+https://doi.org/10.1002/sim.5539)
+
+- `smoke.alarm`: interventi per sensibilizzare circa l'adozione di sistemi
+di allarme antincedio nelle abitazioni domestiche (esempio 1 in Achana, F.
+A., Cooper, N. J., Dias, S., Lu, G., Rice, S. J. C., Kendrick, D., & Sutton,
+A. J. (2013). Extending methods for investigating the relationship between
+treatment effect and baseline risk from pairwise meta‐analysis to network
+meta‐analysis. Statistics in Medicine, 32(5), 752–771.
+https://doi.org/10.1002/sim.5539)
+
+# Funzionamento di base del pacchetto
+
+Innanzitutto è necessario creare un oggetto `ncrr.design` a partire da un
+dataset di partenza, ovvero una lista contenente le informazioni essenziali
+per eseguire le altre funzioni. Dopo aver caricato le funzioni del pacchetto con
+
+```{r}
+devtools::load_all(".")
+```
+
+
+si richiama
+
+
+```{r}
+des <- ncrr.design(smoking)
+```
+
+Il dataset di partenza è così composto
+
+
+```{r}
+head(smoking)
+```
+
+
+È definito un metodo `subset` per un oggetto di classe `ncrr.design` tramite il quale è possibile passare un vettore di indici corrispondenti agli studi da mantenere nel campione (o togliere se negativi)
+
+
+```{r}
+toy1 <- subset(des, c(4, 6))
+```
+
+
+L'oggetto `ncrr.design` serve da base per definire la funzione di
+verosimiglianza. Allo scopo, si utilizza la funzione `get.llik.from.design`.
+Si rimanda alla documentazione per la descrizione di tutte le opzioni, ma si
+segnalano gli argomenti di maggior interesse:
+
+- echo: intero >= 0, più è alto e più informazioni di debug vengono stampate;
+
+- transform: se true, usa riparametrizzazioni per le varianza e le correlazioni;
+
+
+```{r}
+(fn1 <- get.llik.from.design(toy1, echo = 0, transform = FALSE))
+```
+
+
+Per poter essere usata in `optim`, è necessario specificare un punto di
+partenza. Per ottenerlo, utilizzare il metodo `getInitial` della classe
+`ncrr.design` (se transform = FALSE vengono specificati come attributi il
+dominio dei parametri, che possono essere utilizzati nella chiamata a
+`optim`)
+
+
+```{r}
+(init1 <- getInitial(toy1, transform = FALSE))
+```
+
+Si possono far generare valori casuali settando un seed (al momento funziona
+solo per transform = TRUE)
+
+```{r}
+getInitial(toy1, transform = TRUE, seed = 22)
+```
+
+oppure una matrice di valori iniziali casuali
+
+
+```{r}
+getInitial(toy1, transform = TRUE, seed = 22, rep = 10)
+```
+
+
+Un esempio della chiamata ad optim può essere:
+
+
+```{r}
+mv1 <- optim(init1, \(x) -fn1(x),
+             lower = attr(init1, "lower"),
+             upper = attr(init1, "upper"),
+             method = "L-BFGS-B",
+             control = list(fnscale = 1e-10, factr = 1, maxit = 1e6))
+mv1
+```
+
+
+Per visualizzare il vettore dei parametri in modo più agevole, si può usare
+la funzione `crr.split.par`, che "divide" il vettore dei parametri in una
+lista.
+
+
+```{r}
+crr.split.par(mv1$par)
+```
+
+NOTA: se non diversamente specificato tutte le funzioni assumono la
+struttura "libera" della matrice di varianza-covarianza, ovvero quella in
+cui ogni trattamento ha la propria varianza tra studi ($\sigma^2_{0j}$) e la
+correlazione $\rho$ è da stimare ($\sigma^2_{hj} = \rho \sigma^2_{0j}
+\sigma^2_{0h}). Per specificare una differente struttura (più vincolata) è
+possibile passare alle precedenti funzioni l'argomento `vcov.type`. I
+quattro tipi di strutture di varianza sono "normal", "achana", "equivar" e
+"simple" e sono esplicati nel file `verosim1.pdf`.
+
+Per `crr.split.par`, bisogna fornire l'elenco dei parametri fissi tramite
+`fixed = c(...)`; può essere utile, invece, passare `fixed =
+match.vcov.fixed(<tipo di matrice>)`
+
+
+Infine, si può usare `crr.transform.par` per convertire parametri
+trasformati in originali (inverse = TRUE) e viceversa (inverse = FALSE)
+
+
+```{r}
+# parametri in scala logaritmica
+crr.transform.par(crr.split.par(mv1$par), inverse = FALSE)
+```
+
+Si possono anche fare i grafici dell'oggetto `des`, compreso il grafico di L'Abbè
+(da completare...)
+
+```{r}
+par(mfcol = c(1, 2))
+plot(des)
+labbe.plot(des)
+```
+

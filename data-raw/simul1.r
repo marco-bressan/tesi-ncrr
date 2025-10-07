@@ -37,7 +37,7 @@ des
 toy1 <- subset(des, c(4, 6))
 init1 <- getInitial(toy1, transform = FALSE)
 # creo la funzione di ottimizzazione a partire dal design specificato
-fn1 <- get.llik.from.design(toy1, echo = 3, transform = FALSE)
+fn1 <- get.llik.from.design(toy1, echo = 3, transform = FALSE, use.data = TRUE)
 #| output: false
 # ottimizzazione vincolata
 mv1 <- optim(init1, \(x) -fn1(x),

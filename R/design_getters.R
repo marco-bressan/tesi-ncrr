@@ -1,20 +1,40 @@
+##' Queste funzioni sono state pensate per facilitare l'utente del pacchetto
+##' nella definizione di esperimenti NCRR con strutture di varianza-covarianza
+##' tra studi più o meno flessibili.
+##'
+##' @details
+##' *elencare tutte le matrici presenti*
+##'
+##' @title Utilità per la struttura di covarianza
+##' @param type Uno dei tipi predefiniti di struttura della matrice di
+##'   varianza-covarianza
+##' @author Marco Bressan
+##' @export
+##' @rdname crr-vcov-utils
 match.vcov.type <- function(type = c("normal", "achana", "equivar", "simple")) {
   match.arg(type, several.ok = FALSE)
 }
 
-set.vcov.params <- function(params, np = length(params$beta), vcov.type) {
-  if (vcov.type == "achana") {
+##' @param params Il vettore dei parametri sottoforma di lista
+##' @param np Il numero di trattamenti nella metanalisi escludendo il *baseline*
+##' @rdname crr-vcov-utils
+set.vcov.params <- function(params, np = length(params$beta), type) {
+  if (type == "achana") {
     params$sigma2 <- rep(params$sigma2[1], np)
     params$rho <- 0.5
-  } else if (vcov.type == "equivar") {
+  } else if (type == "equivar") {
     params$sigma2 <- rep(params$sigma20, np)
-  } else if (vcov.type == "simple") {
+  } else if (type == "simple") {
     params$sigma2 <- rep(params$sigma20, np)
     params$rho <- 0.5
   }
   params
 }
 
+##' @param value Se FALSE restituisce solo i nomi dei parametri da tenere
+##'   fissi, altrimenti anche i valori che essi devono assumere.
+##' @export
+##' @rdname crr-vcov-utils
 match.vcov.fixed <- function(type, value = FALSE, np) {
   type <- match.vcov.type(type)
   ff <- switch(type, achana = "rho", equivar = "sigma2", simple = c("rho", "sigma2"))
@@ -34,6 +54,13 @@ match.vcov.fixed <- function(type, value = FALSE, np) {
   }
   ff
 }
+
+par.select.multi <- function(object, params) {
+  lapply(params, \(x) if (length(x) == 1) x else x[object])
+}
+
+
+
 
 crr.get.sigma <- function(object, params, raw = FALSE) {
   dd <- object$design
@@ -66,10 +93,6 @@ crr.get.mu <- function(object, params, raw = FALSE) {
   if (raw)
     return(mul[match(dd, dunique)])
   do.call(c, mul[match(dd, dunique)])
-}
-
-par.select.multi <- function(object, params) {
-  lapply(params, \(x) if (length(x) == 1) x else x[object])
 }
 
 crr.get.Gamma <- function(object, raw = FALSE) {
@@ -114,6 +137,9 @@ get.matrix.from.design <- function(object, what = c("theta", "gamma")) {
   mm[!is.na(mm)] <- object[[what]]
   t(mm)
 }
+
+
+# elementi della score
 
 crr.get.scmu <- function(object, params) {
   stopifnot(!USA_MIA_MODELLAZIONE)

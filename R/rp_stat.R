@@ -1,36 +1,32 @@
-#' Calcolo della statistica radice con segno del log-rapporto di verosimiglianza (\( r_p \))
+#' Questa funzione calcola la statistica radice con segno ($r_p$), basata
+#' sul log-rapporto di verosimiglianza, utile nell'inferenza parametrica
+#' condizionale e nell'analisi della significatività di parametri di interesse.
 #'
-#' Questa funzione calcola la statistica radice con segno (\( r_p \)), basata sul log-rapporto di verosimiglianza, utile nell'inferenza parametrica condizionale e nell'analisi della significatività di parametri di interesse.
+#' @title Calcolo della statistica log-RV
 #'
-#' ## Dettagli teorici
-#' \[
-#' r_p = \mathrm{sign}(\hat{\psi} - \psi_0) \sqrt{2(\ell(\hat{\theta}) - \ell(\tilde{\theta}))}
-#' \]
-#' dove \(\ell(\hat{\theta})\) è la log-verosimiglianza nell'ipotesi libera, \(\ell(\tilde{\theta})\) è la log-verosimiglianza vincolata sotto \(\psi = \psi_0\), \(\hat{\psi}\) è la stima massima di \(\psi\) e \(\psi_0\) il valore fissato.
-#'
-#' ## Argomenti
-#' @param dati.gen Lista o vettore di dati osservati da analizzare.
-#' @param psi0 Valore del parametro di interesse \(\psi\) sotto ipotesi nulla.
+#' @param dati.gen Oggetto di classe ncrr.design
+#' @param psi0 Valore del parametro di interesse $\psi$ sotto l'ipotesi nulla.
 #' @param init Vettore di valori iniziali per l'ottimizzazione dei parametri.
-#' @param param Indice (o nome) del parametro di interesse \(\psi\). Default: `match("beta5", names(init))`.
-#' @param theta.hat (Opzionale) Stima libera massima della verosimiglianza. Se NULL viene stimata internamente.
-#' @param J (Opzionale) Matrice hessiana della funzione di log-verosimiglianza. Se NULL viene stimata internamente.
+#' @param param Indice del parametro di interesse $\psi$. Di default si
+#'   considera il parametro "beta5".
+#' @param theta.hat (Opzionale) Punto di massima della verosimiglianza
+#'   precalcolato. Se NULL viene stimata internamente.
+#' @param J (Opzionale) Matrice hessiana della funzione di log-verosimiglianza
+#'   precalcolata. Se NULL viene stimata internamente.
 #' @param ... Argomenti aggiuntivi passati alla funzione di verosimiglianza.
-#' @param exact Se TRUE, usa ottimizzazione vincolata esatta; se FALSE, usa approssimazione di Taylor per i disturbi.
-#' @param par.only Se TRUE, restituisce solo i parametri ottimizzati sotto vincolo. Default: FALSE.
-#'
-#' ## Valore
-#' Restituisce la statistica \( r_p \) come oggetto numerico, con attributi `theta.hat` (stima libera dei parametri) e `J` (matrice hessiana). Se `par.only = TRUE`, restituisce il vettore dei parametri ottimizzati sotto vincolo.
-#'
-#' ## Esempio
-#' ```
-#' # Suppose dati.gen is a vector of outcomes, init is a named vector of initial parameter guesses
-#' rp <- rp.stat(dati.gen, psi0 = 0.2, init)
-#' ```
-#'
+#' @param exact Se TRUE, usa ottimizzazione vincolata esatta.
+#' @param par.only Se TRUE, restituisce solo i parametri ottimizzati sotto
+#'   vincolo
+#' @param export Nomi degli attributi da esportare: di default, `theta.hat`
+#'   (stima libera dei parametri), `l.hat` (verosimiglianza nel punto di
+#'   massimo) e `J` (matrice hessiana)
+#' @return La statistica $r_p$ come oggetto numerico con gli attributi
+#'   specificati in `export`. Se `par.only = TRUE`, restituisce il vettore dei
+#'   parametri ottimizzati sotto vincolo.
 #' @export
 rp.stat <- function(dati.gen, psi0, init, param = match("beta5", names(init)),
-                    theta.hat = NULL, J = NULL, ..., exact = NA, par.only = FALSE) {
+                    theta.hat = NULL, J = NULL, ...,
+                    exact = NA, par.only = FALSE, export = c("theta.hat", "l.hat", "J")) {
   # psi par d'interesse, lam di disturbo
   if (is.null(theta.hat)) {
     opt.theta <- optim(init, \(x) -llik.fun(x, dati.gen), method = "BFGS", hessian = TRUE)
@@ -78,5 +74,6 @@ rp.stat <- function(dati.gen, psi0, init, param = match("beta5", names(init)),
   if (par.only) return(theta.psi)
   lp0 <- llik.fun(theta.psi, dati.gen)
   rp <- unname(sign(theta.hat[param] - psi0) * sqrt(2) * sqrt(l.hat - lp0))
-  structure(rp, theta.hat = theta.hat, J = J)
+  for (a in export) attr(rp, a) <- get(a, environment())
+  rp
 }

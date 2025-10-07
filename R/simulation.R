@@ -9,9 +9,9 @@ random.design <- function() {
 #' @param nsim numero di simulazioni
 #' @param seed Seme casuale per riproducibilità
 #' @param vcov.type Tipo di matrice di varianza-covarianza da usare
-#' @param ... Parametri previsti per la specifica tipologia di matrice
-#' (un sottoinsieme di alpha, beta, mu0, sigma20, rho, sigma2)
-#'
+#' @param params Parametri previsti per la specifica tipologia di matrice (un
+#'   sottoinsieme di alpha, beta, mu0, sigma20, rho, sigma2)
+#' @param ... Variante per specificare i parametri come in `params`
 #' @returns Una lista di oggetti `ncrr.design` con i dati simulati.
 #' @export
 #'
@@ -26,7 +26,7 @@ simulate.ncrr.design <- function(object, nsim = 1, seed = rpois(1, 1e5),
   ds <- object$x
   if (missing(params))
     params <- list(...)
-  params <- set.vcov.params(params, vcov.type = vcov.type)
+  params <- set.vcov.params(params, type = vcov.type)
   mu <- crr.get.mu(object, params, raw = TRUE)
   #browser()
   Sigma <- crr.get.sigma(object, params, raw = TRUE)
