@@ -113,10 +113,19 @@ boot.rp.ci2 <- crr.boot.ci(boot.rp, psi.grid = bgrid, within = NA,
 # within = NA, exact = T :  700 s
 # within = NA, exact = NA:  862 s
 # within = T , exact = F : 1659 s
+# within = T , exact = F : 2007 s
 
-# boot.rp.ci <- crr.boot.ci(boot.rp, psi.grid = bgrid[seq_along(bgrid)%%5 == 0],
-#                           statistic = rp.stat,
-#                           within = FALSE, exact = FALSE, parallel = FALSE)
+
+boot.rp.ci <- crr.boot.ci(boot.rp, psi.grid = bgrid[seq_along(bgrid)%%5 == 0],
+                          statistic = rp.stat,
+                          within = TRUE, exact = FALSE, parallel = TRUE)
+boot.rp.ci32 <- crr.boot.ci(des, rp.stat, R = 500,
+                           ran.gen = gendat.fun, mle = simu.pars.v,
+                           seed = c(1998135100L, 2044097286L, 1091132551L,
+                                    966088075L, 1553350452L, 1303502678L),
+                           psi0 = 1, init = simu.pars.v, param = param,                retain.data = TRUE,
+                           psi.grid = bgrid, within = TRUE, exact = TRUE, parallel = TRUE)
+
 #| eval: false
 if (FALSE) {
   # differenza di performance tra la versione approssimata e quella esatta

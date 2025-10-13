@@ -31,14 +31,14 @@ des <- ncrr.design(smoke.alarm)
 # solo i design che contengono lo zero
 #des <- subset(des, which(sapply(des$design, \(x) 0 %in% x)))
 
-confronta.gr <- function(x, fn, perf = FALSE) {
-  numgr <- numDeriv::grad(fn, x)
+confronta.gr <- function(x, fn, perf = FALSE, times = 25) {
+  numgr <- pracma::grad(fn, x)
   gr <- attr(fn, "score")(x)
   if (perf)
     perf <- microbenchmark::microbenchmark(
-      numgr = numDeriv::grad(fn, x),
+      numgr = pracma::grad(fn, x),
       gr = attr(fn, "score")(x),
-      times = 20
+      times = times
     )
   print(perf)
   cat("\n========================\n")
@@ -47,7 +47,7 @@ confronta.gr <- function(x, fn, perf = FALSE) {
   cbind(x = x, numgr = numgr, gr = gr)
 }
 
-opt.fn <- get.llik.from.design2(des, vcov.type = "achana", echo = 0)
+opt.fn <- get.llik.from.design(des, vcov.type = "achana", echo = 0)
 opt1 <- optim(ini1 <- getInitial(des, vcov.type = "achana"),
               \(x) -opt.fn(x), method = "BFGS")
 crr.split.par(opt1$par, transform = TRUE, fixed = match.vcov.fixed("achana"))
@@ -56,12 +56,13 @@ crr.split.par(opt1$par, transform = TRUE, fixed = match.vcov.fixed("achana"))
 ini12 <- getInitial(des, vcov.type = "achana", seed = 2)
 confronta.gr(ini1, opt.fn, perf = F)
 confronta.gr(ini12, opt.fn, perf = F)
-confronta.gr(opt1$par, opt.fn, perf = F)
+confronta.gr(opt1$par, opt.fn, perf = TRUE)
 
 opt2 <- optim(ini12, \(x) -opt.fn(x), method = "BFGS",
-              gr = \(x) -1e-7 * attr(opt.fn, "score")(x))
+              gr = \(x) -attr(opt.fn, "score")(x))
 confronta.gr(opt2$par, opt.fn, perf = F)
-nlminb(ini12, \(x) -opt.fn(x), gradient = \(x) -1e-7 * attr(opt.fn, "score")(x)) # false convergence
+nlminb(ini12, \(x) -opt.fn(x), gradient = \(x) -attr(opt.fn, "score")(x)) # false convergence
+nlminb(ini12, \(x) -opt.fn(x)) # false convergence
 crr.split.par(opt2$par, 6, transform = TRUE, fixed = match.vcov.fixed("achana"))
 
 #'
@@ -76,7 +77,7 @@ cbind(
 ) |>
   round(4)
 
-opt.fn <- get.llik.from.design(des, vcov.type = "normal", echo = 4, transform = TRUE)
+opt.fn <- get.llik.from.design(des, vcov.type = "normal", echo = 0, transform = TRUE)
 opt1 <- optim(ini2 <- getInitial(des, vcov.type = "normal", transform = TRUE),
               \(x) -opt.fn(x), method = "BFGS")
 #crr.split.par(opt1$par, 5, transform = TRUE)
@@ -112,7 +113,8 @@ cbind(crr.transform.par(opt1$par, inverse = TRUE),
 # specifico il design della meta-analisi
 des2 <- ncrr.design(morphine)
 
-opt.fn <- get.llik.from.design(des2, vcov.type = "achana", stop.on.fail = FALSE, echo = 1)
+opt.fn <- get.llik.from.design(des2, vcov.type = "achana",
+                               stop.on.fail = FALSE, echo = 1)
 opt1 <- optim(ini2 <- getInitial(des2, vcov.type = "achana"),
               \(x) -opt.fn(x), method = "BFGS")
 crr.split.par(opt1$par, transform = TRUE, fixed = match.vcov.fixed("achana"))
@@ -138,6 +140,19 @@ opt1 <- optim(getInitial(des2, vcov.type = "equivar"),
 crr.split.par(opt1$par, 3, transform = TRUE, fixed = match.vcov.fixed("equivar"))
 opt2 <- optim(opt1$par, \(x) -opt.fn(x), method = "Nelder-Mead")
 crr.split.par(opt2$par, 3, transform = TRUE, fixed = match.vcov.fixed("equivar"))
+
+opt2h <- optimHess(opt1$par, \(x) -opt.fn(x))
+cbind(crr.transform.par(opt2$par, inverse = TRUE),
+      opt2h[-13, ][, -13] |> solve() |> diag() |> sqrt()) |>
+  round(4)
+
+
+opt.fn <- get.llik.from.design(des2, vcov.type = "simple")
+opt1 <- optim(getInitial(des2, vcov.type = "simple"),
+              \(x) -opt.fn(x), method = "BFGS")
+crr.split.par(opt1$par, 3, transform = TRUE, fixed = match.vcov.fixed("simple"))
+opt2 <- optim(opt1$par, \(x) -opt.fn(x), method = "Nelder-Mead")
+crr.split.par(opt2$par, 3, transform = TRUE, fixed = match.vcov.fixed("simple"))
 
 opt2h <- optimHess(opt1$par, \(x) -opt.fn(x))
 cbind(crr.transform.par(opt2$par, inverse = TRUE),

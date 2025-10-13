@@ -168,6 +168,7 @@ sc5 <- function(parm) {
   ret[-(1:J)] <- ret[-(1:J)] * exp(parm[-(1:J)])
   -ret
 }
+
 ML5 <- c(mu0 = ML[1], b = ML[2:J] / ML[1],
          s = optim(rep(1, J),
                    \(x) sum((Shat -

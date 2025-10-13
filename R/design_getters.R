@@ -59,9 +59,6 @@ par.select.multi <- function(object, params) {
   lapply(params, \(x) if (length(x) == 1) x else x[object])
 }
 
-
-
-
 crr.get.sigma <- function(object, params, raw = FALSE) {
   dd <- object$design
   dunique <- unique(dd)

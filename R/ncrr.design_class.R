@@ -14,9 +14,9 @@
 #' @export
 ncrr.design <- function(x, vcov.type = NULL) {
   treatments <- levels(x$treatment)
-  if (all(c("mik", "sik") %in% colnames(x))) {# risposta normale
+  if (all(c("mik", "sik", "nik") %in% colnames(x))) {# risposta normale
     theta <- x$mik
-    gamma <- x$sik^2
+    gamma <- x$sik^2 / x$nik
   } else {
     theta <- with(x, log(pmax(.001, rik)) - log(pmax(.001, nik - rik)))
     gamma <- with(x, 1 / pmax(.001, rik) + 1 / (nik + rik))

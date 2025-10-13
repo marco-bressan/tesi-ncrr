@@ -1,3 +1,49 @@
+crr.mu.int <- function(pp, baseline = TRUE) {
+  if (baseline) return(c(0, pp$alpha) + c(1, pp$beta) * pp$mu0)
+  # studi non baseline
+  if (USA_MIA_MODELLAZIONE) {
+    #message("Chiamata mia implementazione!")
+    mu_ib <- pp$alpha[1] + pp$beta[1] * pp$mu0
+    mu <- c(mu_ib, pp$alpha[-1] - pp$alpha[1] + (pp$beta[-1] - pp$beta[1]) * mu_ib)
+    return(mu)
+  }
+  #browser()
+  return(c(diff(pp$alpha),
+           diff(rev(pp$alpha))) + c(diff(pp$beta), diff(rev(pp$beta))) * pp$mu0)
+}
+
+crr.sigma.int <- function(pp, baseline = TRUE) {
+  if (baseline) {
+    # minore matrice vcov ottenuto togliendo la prima riga e la prima colonna
+    #if (length(beta) > 1 && all(c(beta, sigma20, sigma2) != 1)) browser()
+    pp$sigma2 <- sqrt(pp$sigma2)
+    #if (any(!is.finite(sigma2))) browser()#stop("sigma2 negativo!")
+    vv <- tcrossprod(c(1, pp$beta)) * pp$sigma20
+    vv[-1, -1] <- vv[-1, -1] + tcrossprod(pp$sigma2) *
+      diagoffdiag(1, pp$rho, length(pp$beta))
+    return(vv)
+  }
+  sigmab <- pp$rho * sqrt(pp$sigma2[-1] * pp$sigma2[1]) # c(sigma^2_12, sigma^2_21)
+  if (USA_MIA_MODELLAZIONE) {
+    # in questa parte del codice voglio provare ad implementare la mia
+    # versione della ncrr senza baseline. si può cambiare settando la
+    # variabile globale (a livello di pacchetto) pari a FALSE: in questo caso
+    # si userà la parametrizzazione di Guolo
+    # !!! SI ASSUME CHE il baseline SIA IN PRIMA POSIZIONE !!!
+    # === DA RIVEDERE ===
+    betab <- pp$beta[-1] - pp$beta[1]
+    vub <- pp$beta[1]^2 * pp$sigma20 + pp$sigma2[1]
+    vv <- tcrossprod(c(1, betab)) * vub
+    vv[-1, -1] <- vv[-1, -1] +
+      diagoffdiag(1, pp$rho, length(pp$beta) - 1) * # len(beta) == 2 per design bivar.
+      tcrossprod(sigmab)
+    return(vv)
+  }
+  beta <- c(pp$beta[1] - pp$beta[2], pp$beta[2] - pp$beta[1])
+  # sigma_12 = cov(eps1_01, eps1_02) = rho * sigma_01 * sigma_02
+  return(tcrossprod(beta) * pp$sigma20 + diag(sigmab, 2))
+}
+
 ##' Funzioni a basso livello per il calcolo dei parametri della distribuzione
 ##' marginale (normale) della NCRR
 ##'

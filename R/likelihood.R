@@ -16,7 +16,6 @@
   })
   pieces <- list(
     `__GETPARS__` = quote({
-      pold <- params
       changed <- !is.null(fixed)
       if (length(names(fixed.default)) > 0) {
         fixed[names(fixed.default)] <- fixed.default
@@ -37,8 +36,9 @@
           paste(collapse = ", ") |>
           cat("\n")
       }
-      mu <- crr.get.mu(object, params, raw = TRUE)
-      Sigma <- crr.get.sigma(object, params, raw = TRUE)
+      dun.pars <- lapply(dun, \(d) lapply(params, \(x) if (length(x) == 1) x else x[d]))
+      mu <- .mapply(crr.mu.int, list(dun.pars, dbs), NULL)[dun.map]
+      Sigma <- .mapply(crr.sigma.int, list(dun.pars, dbs), NULL)[dun.map]
     }),
     `__CHECK_AND_LOG__` = substitute({
       if (anyNA(ll)) TERMINATE_NA
@@ -68,10 +68,13 @@
     pieces$`__GETPARS__` <- .append.expr(pieces$`__GETPARS__`, as.call(GETDATAexpr))
   }
   formals(llik.fun) <- arglist
-  body(llik.fun) <- .subst.keys(body(llik.fun), pieces)
+  body(llik.fun) <- eval(substitute(substitute(EXPR, pieces),
+                                    list(EXPR = body(llik.fun))))
   if (!is.null(score.fun)) {
+    pieces$`__LLIKFN__` <- substitute(llik <- FUN, list(FUN = llik.fun))
     formals(score.fun) <- arglist
-    body(score.fun) <- .subst.keys(body(score.fun), pieces)
+    body(score.fun) <- eval(substitute(substitute(EXPR, pieces),
+                                       list(EXPR = body(score.fun))))
   }
   if (is.null(score.fun))
     return(llik.fun)
@@ -106,30 +109,68 @@ get.llik.from.design <- function(object, transform = TRUE, echo = 0,
                                  vcov.type = attr(object, "vcov.type"),
                                  use.data = FALSE, stop.on.fail = FALSE) {
   np <- length(tt <- unique(do.call(c, object$design))) - 1
-  fixed.default <- NULL
   if (is.null(vcov.type))
     vcov.type <- "normal"
   vcov.type <- match.vcov.type(vcov.type)
   fixed.default <- match.vcov.fixed(vcov.type, TRUE, np)
-  par.pos <- crr.par.idx(np, fixed = names(fixed.default), parlen = attr(fixed.default, "parlen"))
+  # quantità precalcolate
+  n <- length(object$design)
+  dun <- unique(object$design)
+  dun.map <- match(object$design, dun)
+  dbs <- vapply(dun, \(d) 0 %in% d, logical(1))
+  par.pos <- crr.par.idx(np, fixed = names(fixed.default),
+                         parlen = attr(fixed.default, "parlen"))
   par.trans <- grep("sigma|rho", names(par.pos))
+  heps <- .Machine$double.eps^(1/3)
+  # costruzione likelihood
   .build.llik(
-    function(params, y = crr.get.theta(object, raw = TRUE),
-             Gamma = crr.get.Gamma(object, raw = TRUE),
-             fixed = NULL) {
+    llik.fun = function(params, y = crr.get.theta(object, raw = TRUE),
+                        Gamma = crr.get.Gamma(object, raw = TRUE),
+                        fixed = NULL) {
+      pold <- params
       `__GETPARS__`
       ll <- mapply(\(t, m, Si, Gi) {
-        chl <- try(chol(S <- Si + Gi), silent = echo <= 3)
-        if (inherits(chl, "try-error")) {
-          #browser()
-          return(NaN)
-          #chl <- as.matrix(as(Matrix::Cholesky(S),"dtrMatrix"))
-        }
-        chl <- mvtnorm::ltMatrices(chl[which(upper.tri(chl, diag = TRUE))], diag = TRUE)
-        mvtnorm::ldmvnorm(t, mean = m, chol = chl)
+        return(mvtnorm::dmvnorm(t, m, Si + Gi, log = TRUE))
+        # tengo la parte seguente solo per informazione
+        ## chl <- try(chol(S <- Si + Gi), silent = echo <= 3)
+
+        ## if (inherits(chl, "try-error")) {
+        ##   #browser()
+        ##   chl <- S * NaN
+        ##   #chl <- as.matrix(as(Matrix::Cholesky(S),"dtrMatrix"))
+        ## }
+        ## if (!exists(".__likdbg", globalenv()))
+        ##   assign(".__likdbg", list(list(S, chl)), globalenv())
+        ## else
+        ##   assign(".__likdbg",
+        ##          append(get(".__likdbg", globalenv()), list(list(S, chl))), globalenv())
+        ## chl <- mvtnorm::ltMatrices(chl[which(upper.tri(chl, diag = TRUE))], diag = TRUE)
+        ## ldn <- mvtnorm::ldmvnorm(t, mean = m, chol = chl)
+        ## mvn <- mvtnorm::dmvnorm(t, m, S, log = TRUE)
+        ## mvn
       }, y, mu, Sigma, Gamma)
       `__CHECK_AND_LOG__`
       return(ll)
+    },
+    score.fun <- function(params, y = crr.get.theta(object, raw = TRUE),
+                          Gamma = crr.get.Gamma(object, raw = TRUE),
+                          fixed = NULL) {
+      gr <- params * 0
+      pold <- params
+      #`__LLIKFN__` # llik <- function(...){...}
+      ll <- matrix(NA, 2, n)
+      for (i in seq_along(gr)) {
+        for (l in c(-1, 1)) {
+          params <- pold
+          params[i] <- params[i] + l * heps
+          `__GETPARS__`
+          ll[as.integer(l / 2 + 1.5), ] <- mapply(\(t, m, Si, Gi) {
+            return(mvtnorm::dmvnorm(t, m, Si + Gi, log = TRUE))
+          }, y, mu, Sigma, Gamma)
+        }
+        gr[i] <- sum(diff(ll) / 2 / heps)
+      }
+      gr
     },
     use.data = as.logical(use.data),
     stop.on.fail = as.logical(stop.on.fail)
@@ -220,4 +261,19 @@ get.llik.from.design2 <- function(object, transform = TRUE, echo = 0,
   scQ <- Scinv %*% tcrossprod(tt - mu) %*% Scinv
   scoreS <- -Scinv + 0.5 * diag(diag(Scinv)) + scQ - 0.5 * diag(diag(scQ))
   list(mu = scmu, Sigma = scoreS)
+}
+
+#' @export
+vcov.ncrr.design <- function(object, x0, llik.fn = get.llik.from.design(object),
+                             score.fn = attr(llik.fn, "score"), sandwich = FALSE,
+                             ...,
+                             score = NULL, J = NULL) {
+  n <- length(object$design)
+  J <- J %||% -optimHess(x0, llik.fn, gr = score.fn, ...)
+  invJ <- solve(J)
+  if (isFALSE(sandwich))
+    return(invJ)
+  score <- if (is.null(score.fn)) pracma::grad(llik.fn, x0) else score.fn(x0)
+  I <- tcrossprod(score)
+  invJ %*% I %*% invJ
 }

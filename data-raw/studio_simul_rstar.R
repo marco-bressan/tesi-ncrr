@@ -7,27 +7,26 @@
 #'     fig-height: 10
 #' ---
 rm(list = ls())
-#setwd("/home/marco/Nextcloud/tesi-ncrr/")
+setwd("/home/marco/Nextcloud/tesi-ncrr/")
 devtools::load_all()
 library("likelihoodAsy")
 library("tesi.ncrr")
 
 CONFLVL <- .95
 NSIM <- 250
-VCOVTYPE <- "achana"
+VCOVTYPE <- "simple"
 
 #DIR <- "../.." # per il markdown
-DIR <- "../output-tesi-morph/" # per l'esecuzione nel pacchetto
+DIR <- "/home/marco/output-tesi-morph/" # per l'esecuzione nel pacchetto
+if (!dir.exists(DIR))
+  dir.create(DIR)
 
 #' # Simulazione basata sul problema di achana
 #| warning: false
 des <- ncrr.design(morphine)
 des <- subset(des, which(sapply(des$design, \(d) (0 %in% d))))
 
-simu.pars <- list(alpha = c(4.83954552861156, 1.91648264959901, -7.8818582891857),
-                  beta = c(0.54124337280237, 0.684636398950427, 1.07584741239975),
-                  mu0 = 39.2127943905305,
-                  sigma20 = 301.610542474365, sigma2 = 0.000154511183737929)
+simu.pars <- list(alpha = c(5.99639710290691, 1.51110953873727, -0.461698264404757), beta = c(0.551374273778573, 0.721813281778293, 0.751400418819617), mu0 = 37.4498851342351, sigma20 = 114.95716197389)
 
 ## simu.pars <- list(alpha = c(0.53118984013899, 1.0431973777787, 0.00434231242384523,
 ##                             2.36407165618289, 2.66293182986318, 2.7339581049579),
@@ -39,7 +38,6 @@ simu.pars <- list(alpha = c(4.83954552861156, 1.91648264959901, -7.8818582891857
 ##                   sigma2 = 5.69469982077026) # stime MV dai dati originali
 simu.des <- simulate(des, nsim = NSIM, vcov.type = VCOVTYPE,
                      seed = 212, params = simu.pars)
-
 simu.pars.v <- crr.join.par(simu.pars) |> crr.transform.par()
 
 llik.fun <- get.llik.from.design(des, vcov.type = VCOVTYPE,
@@ -53,7 +51,7 @@ psi.fun <- function(theta) {
   theta[["sigma20"]]
 }
 
-save(simu.des, file = file.path(DIR, "des.rda"))
+save.image(file.path(DIR, "des.rda"))
 
 #| eval: false
 # simulazione
@@ -65,15 +63,16 @@ psi.r <- psi.rs <- psi.stime <- psi.sd <- numeric(NSIM)
 for (k in seq_len(NSIM)) {
   message(sprintf("%.2f%%\r", k / NSIM * 100))
   # ------ OTTIMIZZAZIONE ----
-  opt1 <- optim(init, \(x) -llik.fun(x, data = simu.des[[k]]), method = "BFGS", hessian = TRUE)
+  opt1 <- optim(init, \(x) -llik.fun(x, data = simu.des[[k]]),
+                method = "BFGS", hessian = TRUE)
 
-  for (R in as.integer(300*exp(1:3))){
+  for (R in as.integer(400*exp(1:2))){
     message("--> R = ", R)
     opt2 <- try(
       crr.rstar(simu.des[[k]], thetainit = init, floglik = llik.fun,
-                          fpsi = psi.fun,  psival = psi.fun(init),
-                          datagen = gendat.fun, seed = 22, R = R,
-                parallel = FALSE, trace = Inf)
+                fpsi = psi.fun,  psival = psi.fun(init), datagen = gendat.fun,
+                seed = c(17980L, 31642L, 8590L, 104005L, 1543L, 257L),
+                R = R, parallel = TRUE, trace = Inf)
     )
     if (!inherits(opt2, "try-error") && is.finite(opt2$rs)) break
   }

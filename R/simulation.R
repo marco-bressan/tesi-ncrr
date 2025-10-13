@@ -32,14 +32,28 @@ simulate.ncrr.design <- function(object, nsim = 1, seed = rpois(1, 1e5),
   Sigma <- crr.get.sigma(object, params, raw = TRUE)
   theta <- mapply(\(m, S) t(rmvnorm(nsim, m, S)), mu, Sigma, SIMPLIFY = FALSE)
   theta <- do.call(rbind, theta)
-  pik <- exp(theta) / (1 + exp(theta))
-  rik <- matrix(rbinom(length(pik), rep(ds$nik, ncol(pik)), c(pik)),
-                nrow(pik), ncol(pik))
+  is.norm <- all(c("mik", "sik") %in% names(ds))
+  if (is.norm) {
+    ##TODO: necessaria logica ulteriore per simulazione normale?
+    ## dat <- vapply(seq_len(nsim), \(i) {
+    ##   mapply(\(n, t, s) {
+    ##     xx <- rnorm(n, t, s)
+    ##     c(mean(xx), sd(xx))
+    ##   }, ds$nik, theta[, i], ds$sik)
+    ## })
+  } else {
+    pik <- exp(theta) / (1 + exp(theta))
+    rik <- matrix(rbinom(length(pik), rep(ds$nik, ncol(pik)), c(pik)),
+                  nrow(pik), ncol(pik))
+  }
+
   structure(
-    lapply(seq_len(ncol(pik)), \(i) {
+    lapply(seq_len(nsim), \(i) {
       ds2 <- ds
-      ds2$tik <- theta[, i]
-      ds2$rik <- rik[, i]
+      if (is.norm)
+        ds2$mik <- theta[, i]
+      else
+        ds2$rik <- rik[, i]
       ncrr.design(ds2, vcov.type)
     }),
     seed = seed,
