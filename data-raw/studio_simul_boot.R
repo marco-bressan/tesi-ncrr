@@ -14,26 +14,20 @@ library("likelihoodAsy")
 
 CONFLVL <- .95
 NSIM <- 250
-VCOVTYPE <- "achana"
+VCOVTYPE <- "simple"
 bgrid <- seq(-10, 20, length.out = 50)
 
 #DIR <- "/home/marco/output-tesi"
 #DIR <- "../.." # per il markdown
-DIR <- "../output-rp-boot/" # per l'esecuzione nel pacchetto
+DIR <- "../output-rp-boot-morph/" # per l'esecuzione nel pacchetto
 if (!dir.exists(DIR))
   dir.create(DIR)
 
 #' # Simulazione basata sul problema di achana
-des <- ncrr.design(smoke.alarm, vcov.type = "achana")
+des <- ncrr.design(morphine, vcov.type = VCOVTYPE)
 
 # stima MLE ottenuta sul dataset originale
-simu.pars <- list(alpha = c(0.53118984013899, 1.0431973777787, 0.00434231242384523,
-                            2.36407165618289, 2.66293182986318, 2.7339581049579),
-                  beta = c(0.948918313002282, 1.02425107553256, 1.06604309779969,
-                           0.240340161234799, 0.179383944934584, 0.179378353526596),
-                  mu0 = 0.81098898311333,
-                  sigma20 = 2.63212049308308,
-                  sigma2 = 5.69469982077026) # stime MV dai dati originali
+simu.pars <- list(alpha = c(5.99639710290691, 1.51110953873727, -0.461698264404757), beta = c(0.551374273778573, 0.721813281778293, 0.751400418819617), mu0 = 37.4498851342351, sigma20 = 114.95716197389)
 simu.des <- simulate(des, params = simu.pars,
                      vcov.type = VCOVTYPE, nsim = NSIM, seed = 212)
 simu.pars.v <- tesi.ncrr:::crr.join.par(simu.pars) |> tesi.ncrr:::crr.transform.par()
@@ -45,13 +39,13 @@ gendat.fun <- function(data, theta) {
 }
 
 psi.fun <- function(theta, data) {
-  theta[["beta5"]]
+  theta[["sigma20"]]
 }
 
 # bootstrap sul vero dataset
-param <- match("beta5", names(simu.pars.v))
-llik.fun <- get.llik.from.design2(des, vcov.type = VCOVTYPE, echo = 0,
-                                  use.data = TRUE, stop.on.fail = FALSE)
+param <- match("sigma20", names(simu.pars.v))
+llik.fun <- get.llik.from.design(des, vcov.type = VCOVTYPE, echo = 0,
+                                 use.data = TRUE, stop.on.fail = FALSE)
 
 #'
 #' Si testa l'ipotesi che beta5 != 1. Da HMA:
@@ -61,13 +55,10 @@ llik.fun <- get.llik.from.design2(des, vcov.type = VCOVTYPE, echo = 0,
 #' control risk increases by a certain amount, the treatment group risk
 #' increases by the same amount. Thus, interesting cases are usually those
 #' where β1 deviates from 1.
-#'
-
-boot.rp <- crr.boot(des, rp.stat, R = 500,
+boot.rp <- crr.boot(des, rp.stat, R = 200,
                     ran.gen = gendat.fun, mle = simu.pars.v, parallel = TRUE,
-                    seed = c(1998135100L, 2044097286L, 1091132551L,
-                             966088075L, 1553350452L, 1303502678L),
-                    psi0 = 1, init = simu.pars.v, param = param, exact = TRUE,
+                    psi0 = 1, init = simu.pars.v, param = param, exact = FALSE,
+                    llik.fn = llik.fun,
                     retain.data = TRUE)
 
 ## # controllo correttezza risultati
@@ -102,12 +93,6 @@ boot.rp <- crr.boot(des, rp.stat, R = 500,
 ## abline(h = qnorm(c(0.025, 0.975)), lty = 3)
 ## abline(v = 1, lty = 2)
 
-## #versione automatica
-boot.rp.ci1 <- crr.boot.ci(boot.rp, psi.grid = bgrid, within = FALSE,
-                           exact = FALSE,
-                           statistic = rp.stat)
-boot.rp.ci2 <- crr.boot.ci(boot.rp, psi.grid = bgrid, within = NA,
-                           statistic = rp.stat, exact = TRUE, parallel = TRUE)
 
 # RISULTATI TEMPISTICHE per 1 elemento della griglia
 # within = NA, exact = T :  700 s
@@ -151,21 +136,22 @@ psi.rs <- psi.stime <- psi.sd <- numeric(NSIM)
 for (k in 57:NSIM) {
   message(sprintf("%.2f%%\r", k / NSIM * 100))
   opt1 <- crr.rstar(simu.des[[k]], thetainit = init, floglik = llik.fun,
+                    fscore = attr(llik.fun, "score"),
                     fpsi = psi.fun,  psival = psi.fun(init),
                     datagen = gendat.fun, ronly = TRUE)
   boot.rp.cur <- try(crr.boot(simu.des[[k]], rp.stat, R = 500, sim = "parametric",
-                              ran.gen = gendat.fun, mle = opt1$theta.hat, parallel = TRUE,
+                              ran.gen = gendat.fun, mle = opt1$theta.hat,
+                              parallel = TRUE,
                               seed = c(1998135100L, 2044097286L, 1091132551L,
                                        966088075L, 1553350452L, 1303502678L),
                               psi0 = simu.pars.v[param], init = opt1$theta.hat,
-                              param = param))
+                              param = param, llik.fn = llik.fun))
   rs1 <- crr.rstar(simu.des[[k]], thetainit = init, floglik = llik.fun,
                    fpsi = psi.fun,  psival = psi.fun(init),
                    seed = c(1998135100L, 2044097286L, 1091132551L,
                             966088075L, 1553350452L, 1303502678L),
                    datagen = gendat.fun, parallel = TRUE, R = 500)
-  boot.rp.cur.ci1 <- try(crr.boot.ci(boot.rp.cur, psi.grid = bgrid,
-                                     within = FALSE, exact = FALSE, statistic = rp.stat))
+  boot.rp.cur.ci1 <- try(crr.boot.ci(boot.rp.cur, psi.grid = bgrid, within = FALSE))
   if (is.recursive(boot.rp.cur.ci1))
     boot.rp.cur.ci1$boot <- boot.rp.cur
   saveRDS(list(rs1, boot.rp.cur.ci1), file = file.path(DIR, paste0("boot_rp_", k, "_", as.integer(Sys.time()), ".rds")))

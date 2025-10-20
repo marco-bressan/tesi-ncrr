@@ -40,7 +40,7 @@ manlik3b <- function(params, theta, gamma, K, design) {
       #browser()
       return(-Inf)
     }
-    ss <- (\(x) as.vector(-0.5*(x - mu) %*% sigmainv %*% (x - mu)))(theta[[i]])
+    ss <- (\(x) as.vector(-0.5 * (x - mu) %*% sigmainv %*% (x - mu)))(theta[[i]])
     -0.5 * as.vector(determinant(sigma)$modulus) + ss
   })
   print(lik.vec)
@@ -62,13 +62,17 @@ while (i <= length(init)) {
   j <- j + 1
 }
 
-llik <- get.llik.from.design(des, vcov.type = "achana", echo = 3)
+llik <- get.llik.from.design(des, vcov.type = "achana", echo = 0)
 
 theta <- crr.get.theta(des, raw = TRUE)
 gamma <- crr.get.Gamma(des, raw = TRUE)
 
-manlik3b(init2b, theta, gamma, K, des$design)
 llik(init, theta, gamma)
+manlik3b(init2b, theta, gamma, K, des$design)
+
+nlminb(init2b, manlik3b, theta = theta, gamma = gamma, K = K, design = des$design)
+nlminb(init, llik, y = theta, Gamma = gamma)
+
 # a meno delle costanti moltiplicative le due funzioni mi sembrano equivalenti
 
 # esempio 2: effetti normali, gruppi da 3, no baseline
@@ -95,7 +99,7 @@ while (i <= length(init)) {
   j <- j + 1
 }
 
-llik <- get.llik.from.design(des2, vcov.type = "achana", echo = 4)
+llik <- get.llik.from.design(des2, vcov.type = "achana", echo = 0)
 
 
 theta <- crr.get.theta(des2, raw = TRUE)
@@ -106,12 +110,12 @@ llik(init, theta, gamma)
 
 # il parametro rho alla posizione 2*K+2 non compare nella verosimiglianza e
 # quindi va a caso
-pp2 <- optim(init2b, manlik3b, method = "BFGS", control = list(fnscale = -1),
-             K = K, theta = theta, gamma = gamma, design = des2$design)$par
+(pp2 <- nlminb(init, \(x) -llik(x, y = theta, Gamma = gamma)))
 
-manlik3b(pp2, theta, gamma, K, des2$design)
-llik(pp2[-(2 * K + 2)], theta, gamma)
+vcov.ncrr.design(des, pp2$par, llik = llik) |> diag() |> sqrt()
 
+des2 <- subset(des2, sample(1:54, 100, TRUE))
+des22 <- simulate.ncrr.design(des2, seed = 3)
 
 # Metodo dei momenti
 

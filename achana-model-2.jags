@@ -1,0 +1,50 @@
+model {
+  for (i in 1:ns) {
+    tmpl[i] <- id[i]
+    w[i, 1] <- 0
+    delta[i, 1] <- 0
+    bl[i, 1] <- 0
+
+
+    mu[i] ~ dnorm(0, 0.001)            # Baseline model 1
+    #mu[i] ~ dnorm(mu_mean, taumu)     # Baseline model 2
+
+    for (k in 1:na[i]) {
+      vv[i, k] <- pow(se[i, k], 2)
+      prec[i, k] <- 1 / vv[i, k]
+      y[i, k] ~ dnorm(theta[i, k], prec[i, k])
+      theta[i, k] <- mu[i] + delta[i, k] + bl[i, k]
+      dev[i, k] <- pow(y[i, k] - theta[i, k], 2) * prec[i, k]
+    }
+
+    sumdev[i] <- sum(dev[i, 1:na[i]])
+
+    for (k in 2:na[i]) {
+      delta[i, k] ~ dnorm(md[i, k], taud[i, k])
+      md[i, k] <- d[t[i, k]] - d[t[i, 1]] + sw[i, k] + bl[i, k]
+      taud[i, k] <- tau * 2 * (k - 1) / k
+      w[i, k] <- delta[i, k] - ((d[t[i, k]] - d[t[i, 1]]) + bl[i, k])
+      sw[i, k] <- mean(w[i, 1:(k - 1)])
+      bl[i, k] <- (beta[t[i, k]] - beta[t[i, 1]]) * (mu[i] - bs_mean)
+    }
+  }
+
+  ssumdev <- sum(sumdev[1:ns])
+
+  # Treatment and regression priors
+  d[1] <- 0
+  beta[1] <- 0
+  for (k in 2:nt) {
+    d[k] ~ dnorm(0, 1.0E-4)
+    beta[k] ~ dnorm(0, 0.0001) # independent covariate effect (Model C)
+  }
+
+  # Between-study heterogeneity
+  tau <- 1 / pow(sd, 2)
+  sd ~ dunif(0, 100)
+
+  # Baseline mean and variance
+  mu_mean ~ dnorm(0, 1.0E-4)
+  sdmu ~ dunif(0, 100)
+  taumu <- 1 / pow(sdmu, 2)
+}

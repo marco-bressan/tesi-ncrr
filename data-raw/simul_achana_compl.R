@@ -18,6 +18,76 @@
 rm(list = ls())
 #| output: false
 devtools::load_all(".")
+
+
+#' # Esempio 2
+#'
+#' In questo caso gli *outcome* della NMA sono numerici, quindi il
+#' modello può essere considerato normale e le varianze associate
+#' a ciascuno studio (riportate esplicitamente nello studio) sono
+#' inserite direttamente nella matrice $\hat \Gamma = diag(s^2_{ik})$.
+
+# specifico il design della meta-analisi
+des2 <- ncrr.design(morphine)
+
+opt.fn <- get.llik.from.design(des2, vcov.type = "achana",
+                               stop.on.fail = FALSE, echo = 0)
+opt1 <- optim(ini2 <- getInitial(des2, vcov.type = "achana"),
+              \(x) -opt.fn(x), method = "BFGS")
+crr.split.par(opt1$par, transform = TRUE, fixed = match.vcov.fixed("achana"))
+opt1hess <- optimHess(opt1$par, \(x) -opt.fn(x))
+cbind(opt1$par,
+      opt1hess |> solve() |> diag() |> sqrt()) |> round(4)
+cbind(opt1$par,
+      vcov.ncrr.design(des2, opt1$par, opt.fn) |> diag() |> sqrt()
+      ) |> round(4)
+cbind(opt1$par,
+      vcov.ncrr.design(des2, opt1$par, opt.fn, sandwich = TRUE) |>
+        diag() |>
+        sqrt()
+      ) |> round(4)
+
+
+
+
+
+
+
+opt2.fn <- get.llik.from.design(des2, vcov.type = "normal")
+opt21 <- optim(getInitial(des2, vcov.type = "normal"),
+              \(x) -opt2.fn(x), method = "BFGS")
+crr.split.par(opt21$par, 3, transform = TRUE)
+cbind(crr.transform.par(opt21$par, inverse = TRUE),
+      optimHess(opt21$par, \(x) -opt2.fn(x)) |> solve() |> diag() |> sqrt()) |>
+  round(4)
+
+
+opt.fn <- get.llik.from.design(des2, vcov.type = "equivar")
+opt1 <- optim(getInitial(des2, vcov.type = "equivar"),
+              \(x) -opt.fn(x), method = "BFGS")
+crr.split.par(opt1$par, 3, transform = TRUE, fixed = match.vcov.fixed("equivar"))
+opt2 <- optim(opt1$par, \(x) -opt.fn(x), method = "Nelder-Mead")
+crr.split.par(opt2$par, 3, transform = TRUE, fixed = match.vcov.fixed("equivar"))
+
+opt2h <- optimHess(opt1$par, \(x) -opt.fn(x))
+cbind(crr.transform.par(opt2$par, inverse = TRUE),
+      opt2h[-13, ][, -13] |> solve() |> diag() |> sqrt()) |>
+  round(4)
+
+
+opt.fn <- get.llik.from.design(des2, vcov.type = "simple")
+opt1 <- optim(getInitial(des2, vcov.type = "simple"),
+              \(x) -opt.fn(x), method = "BFGS")
+crr.split.par(opt1$par, 3, transform = TRUE, fixed = match.vcov.fixed("simple"))
+opt2 <- optim(opt1$par, \(x) -opt.fn(x), method = "Nelder-Mead")
+crr.split.par(opt2$par, 3, transform = TRUE, fixed = match.vcov.fixed("simple"))
+
+opt2h <- optimHess(opt1$par, \(x) -opt.fn(x))
+cbind(crr.transform.par(opt2$par, inverse = TRUE),
+      opt2h[-13, ][, -13] |> solve() |> diag() |> sqrt()) |>
+  round(4)
+
+
 data("smoke.alarm")
 
 # specifico il design della meta-analisi
@@ -101,60 +171,3 @@ crr.split.par(opt1$par, transform = TRUE, fixed = match.vcov.fixed("simple"))
 opt2h <- optimHess(opt1$par, \(x) -opt.fn(x))
 cbind(crr.transform.par(opt1$par, inverse = TRUE),
       opt2h |> solve() |> diag() |> sqrt())
-
-
-#' # Esempio 2
-#'
-#' In questo caso gli *outcome* della NMA sono numerici, quindi il
-#' modello può essere considerato normale e le varianze associate
-#' a ciascuno studio (riportate esplicitamente nello studio) sono
-#' inserite direttamente nella matrice $\hat \Gamma = diag(s^2_{ik})$.
-
-# specifico il design della meta-analisi
-des2 <- ncrr.design(morphine)
-
-opt.fn <- get.llik.from.design(des2, vcov.type = "achana",
-                               stop.on.fail = FALSE, echo = 1)
-opt1 <- optim(ini2 <- getInitial(des2, vcov.type = "achana"),
-              \(x) -opt.fn(x), method = "BFGS")
-crr.split.par(opt1$par, transform = TRUE, fixed = match.vcov.fixed("achana"))
-cbind(crr.transform.par(opt1$par, inverse = TRUE),
-      optimHess(opt1$par, \(x) -opt.fn(x)) |>
-        solve() |>
-        diag() |>
-        sqrt()
-      ) |> round(4)
-
-opt2.fn <- get.llik.from.design(des2, vcov.type = "normal")
-opt21 <- optim(getInitial(des2, vcov.type = "normal"),
-              \(x) -opt2.fn(x), method = "BFGS")
-crr.split.par(opt21$par, 3, transform = TRUE)
-cbind(crr.transform.par(opt21$par, inverse = TRUE),
-      optimHess(opt21$par, \(x) -opt2.fn(x)) |> solve() |> diag() |> sqrt()) |>
-  round(4)
-
-
-opt.fn <- get.llik.from.design(des2, vcov.type = "equivar")
-opt1 <- optim(getInitial(des2, vcov.type = "equivar"),
-              \(x) -opt.fn(x), method = "BFGS")
-crr.split.par(opt1$par, 3, transform = TRUE, fixed = match.vcov.fixed("equivar"))
-opt2 <- optim(opt1$par, \(x) -opt.fn(x), method = "Nelder-Mead")
-crr.split.par(opt2$par, 3, transform = TRUE, fixed = match.vcov.fixed("equivar"))
-
-opt2h <- optimHess(opt1$par, \(x) -opt.fn(x))
-cbind(crr.transform.par(opt2$par, inverse = TRUE),
-      opt2h[-13, ][, -13] |> solve() |> diag() |> sqrt()) |>
-  round(4)
-
-
-opt.fn <- get.llik.from.design(des2, vcov.type = "simple")
-opt1 <- optim(getInitial(des2, vcov.type = "simple"),
-              \(x) -opt.fn(x), method = "BFGS")
-crr.split.par(opt1$par, 3, transform = TRUE, fixed = match.vcov.fixed("simple"))
-opt2 <- optim(opt1$par, \(x) -opt.fn(x), method = "Nelder-Mead")
-crr.split.par(opt2$par, 3, transform = TRUE, fixed = match.vcov.fixed("simple"))
-
-opt2h <- optimHess(opt1$par, \(x) -opt.fn(x))
-cbind(crr.transform.par(opt2$par, inverse = TRUE),
-      opt2h[-13, ][, -13] |> solve() |> diag() |> sqrt()) |>
-  round(4)

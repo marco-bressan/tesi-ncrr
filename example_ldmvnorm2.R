@@ -27,6 +27,8 @@ Sigma <- diag(sqrt(1:J / 2)) %*% R %*% diag(sqrt(1:J / 2)) # varianze
 C <- t(chol(Sigma))
 mn <- 1:J # medie
 
+matrixcalc::is.positive.definite(R)
+
 # conversione in ltMatrices
 prm <- C[lower.tri(C, diag = TRUE)]
 lt <- ltMatrices(matrix(prm, ncol = 1L),
@@ -78,15 +80,15 @@ op <- optim(start, fn = ll, gr = sc, method = "L-BFGS-B",
 all.equal(op$par, ML) ## OK
 c(ll(op$par), ll(ML)) |> as.character()
 
-microbenchmark::microbenchmark(
-  score = optim(start, fn = ll, gr = sc, method = "L-BFGS-B",
-                lower = llim, control = list(trace = FALSE)),
-  no_score = optim(start, fn = ll, method = "L-BFGS-B",
-                   lower = llim, control = list(trace = FALSE)),
-  times = 5
-)|>
-  (\(x) {print(x); x}) () |>
-                         plot()
+## microbenchmark::microbenchmark(
+##   score = optim(start, fn = ll, gr = sc, method = "L-BFGS-B",
+##                 lower = llim, control = list(trace = FALSE)),
+##   no_score = optim(start, fn = ll, method = "L-BFGS-B",
+##                    lower = llim, control = list(trace = FALSE)),
+##   times = 5
+## )|>
+##   (\(x) {print(x); x}) () |>
+##                          plot()
 
 # trasformazione logaritmica dei parametri di varianza
 
@@ -126,13 +128,13 @@ op4par <- op4$par
 op4par[J + whichlog] <- exp(op4par[J + whichlog])
 all.equal(op4par, op$par)
 
-microbenchmark::microbenchmark(
-  score = nlminb(start4, ll4, sc4),
-  no_score = nlminb(start4, ll4),
-  times = 5
-)|>
-  (\(x) {print(x); x}) () |>
-                         plot()
+## microbenchmark::microbenchmark(
+##   score = nlminb(start4, ll4, sc4),
+##   no_score = nlminb(start4, ll4),
+##   times = 5
+## )|>
+##   (\(x) {print(x); x}) () |>
+##                          plot()
 
 
 # trasformazione logaritmica dei parametri di varianza
@@ -184,3 +186,46 @@ start5 <- rnorm(length(ML5))
 cbind(sc5(start5), grad(ll5, start5))
 cbind(sc5(op5$par), grad(ll5, op5$par))
 cbind(sc5(op52$par), grad(ll5, op52$par))
+
+# implementazione di Sartori
+
+sc5bis <- function(parm, rho = .5) {
+  R <- diagoffdiag(1, rho, J)
+  muc <- parm[1] * c(1, parm[2:J])
+  Ycc <- Y - muc
+  sigma <- exp(parm[-(1:J)])
+  D <- diag(sqrt(sigma))
+  S <- D %*% R %*% D
+  invS <- solve(S)
+  sc <- apply(Y, 2, .score1mat, mu = muc, Sigma = S)
+  DinvSig.ds <- DSig.ds <- array(NA, c(J, J, J))
+  for (t in 1:J)
+    for (u in 1:J)
+      for (j in 1:J)
+        DSig.ds[t, u, j] <- ifelse(t == u && u == j,
+                                   .5 * 1 / D[j, j],
+                                   ifelse(xor(u == j, t == j),
+                                          S[t, u] / D[j, j],
+                                          0))
+  for (r in 1:J)
+    for (s in 1:J)
+      for (j in 1:J)
+        DinvSig.ds[r, s, j] <- invS[r, ] %*% DSig.ds[,, j] %*% invS[, s]
+  dlii.ds <- sapply(1:J, \(j) .5 * apply(Ycc, 2,
+                                         \(y) t(y) %*% DinvSig.ds[,, j] %*% y))
+  dli.ds <- sapply(1:J, \(j) .5 * sum(diag(invS %*% DSig.ds[,, j])))
+  ret <- vapply(sc, \(x) {
+    c(mu0 = crossprod(x$mu, c(1, parm[2:J])),
+      b = crossprod(x$mu, rbind(0, diag(parm[1], J-1))))
+  }, FUN.VALUE = numeric(J))
+  ret <- c(rowSums(ret), rowSums(dli.ds + t(dlii.ds)))
+  ret[-(1:J)] <- ret[-(1:J)] * exp(parm[-(1:J)])
+  -ret
+}
+
+cbind(sc5bis(start5), grad(ll5, start5))
+
+(op5 <- nlminb(start5, ll5))
+(op5 <- nlminb(start5, ll5, \(x) sc5bis(x)))
+
+sc5bis(op5$par)

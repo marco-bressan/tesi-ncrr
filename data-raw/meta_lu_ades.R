@@ -93,8 +93,7 @@ names(trts) <- NULL
 morphine <- mapply(\(x, nm) {
   mode(x) <- "numeric"
   colnames(x) <- c("nik", "mik", "sik")
-  data.frame(study.id = study.id, treatment = nm,
-             is.baseline = as.numeric(nm == "placebo"), x)
+  data.frame(study.id = study.id, treatment = nm, x)
 }, trts, c("placebo", "paracetamol", "nsaid", "cox-2"), SIMPLIFY = FALSE) |>
   do.call(what = rbind)
 
@@ -103,6 +102,12 @@ morphine <- morphine[-which(naidx), ]
 morphine <- morphine[order(morphine$study.id), ]
 morphine$treatment <- relevel(factor(morphine$treatment), ref = "placebo")
 
+morphine$is.baseline <- tapply(morphine$study.id, morphine$study.id, \(x) {
+  x <- x * 0
+  x[1] <- 1
+  x
+}) |>
+  unlist()
 
 usethis::use_data(smoking, overwrite = TRUE)
 usethis::use_data(thromb, overwrite = TRUE)

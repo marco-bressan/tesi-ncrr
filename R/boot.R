@@ -224,7 +224,7 @@ crr.boot.ci <- function(data, statistic, R, ran.gen, mle, ..., within = FALSE,
       }
     }
     #browser()
-    print(system.time(ic.fun(psi.grid[1])))
+    #print(system.time(ic.fun(psi.grid[1])))
     inner.boot <- simplify2array(.parallel(
       parallel = parallel, nclus = nclus, trace = trace, seed = seed,
       pb = txtProgressBar(style = 3),

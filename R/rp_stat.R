@@ -7,6 +7,8 @@
 #' @param dati.gen Oggetto di classe ncrr.design
 #' @param psi0 Valore del parametro di interesse $\psi$ sotto l'ipotesi nulla.
 #' @param init Vettore di valori iniziali per l'ottimizzazione dei parametri.
+#' @param llik.fn Funzione di verosimiglianza, opzionalmente con inclusa la
+#'   funzione punteggio in un attributo nominato "score".
 #' @param param Indice del parametro di interesse $\psi$. Di default si
 #'   considera il parametro "beta5".
 #' @param theta.hat (Opzionale) Punto di massima della verosimiglianza
@@ -24,21 +26,28 @@
 #'   specificati in `export`. Se `par.only = TRUE`, restituisce il vettore dei
 #'   parametri ottimizzati sotto vincolo.
 #' @export
-rp.stat <- function(dati.gen, psi0, init, param = match("beta5", names(init)),
+rp.stat <- function(dati.gen, psi0, init, llik.fn, param = match("beta5", names(init)),
+                    use.score = NA,
                     theta.hat = NULL, J = NULL, ...,
                     exact = NA, par.only = FALSE, export = c("theta.hat", "l.hat", "J")) {
   # psi par d'interesse, lam di disturbo
+  if (!isFALSE(use.score)) {
+    score.fn <- attr(llik.fn, "score")
+    use.score <- is.function(score.fn)
+  }
   if (is.null(theta.hat)) {
-    opt.theta <- optim(init, \(x) -llik.fun(x, dati.gen), method = "BFGS", hessian = TRUE)
+    opt.theta <- optim(init, \(x) -llik.fn(x, dati.gen),
+                       gr = if (use.score) \(x) -score.fn(x, dati.gen),
+                       method = "BFGS", hessian = TRUE)
     l.hat <- -opt.theta$value
     theta.hat <- opt.theta$par
     J <- opt.theta$hessian
   } else {
-    l.hat <- llik.fun(theta.hat, dati.gen)
+    l.hat <- llik.fn(theta.hat, dati.gen)
     if (is.null(J))
-      J <- -optimHess(theta.hat, llik.fun)
+      J <- -optimHess(theta.hat, llik.fn, gr = if (use.score) \(x) score.fn(x, dati.gen))
   }
-  # opt.theta <- optim(init, \(x) -llik.fun(x, dati.gen), method = "BFGS", hessian = TRUE)
+  # opt.theta <- optim(init, \(x) -llik.fn(x, dati.gen), method = "BFGS", hessian = TRUE)
   # if (!isTRUE(all.equal(opt.theta$par, theta.hat)) ||
   #     !isTRUE(all.equal(opt.theta$hessian, J)))
   #   browser()
@@ -49,7 +58,7 @@ rp.stat <- function(dati.gen, psi0, init, param = match("beta5", names(init)),
     theta.psi[-param] <- theta.hat[-param] +
       c(solve(J[-param, -param]) %*% J[-param, param] %*% (theta.hat[param] - psi0))
     ## confronto
-    # theta.psi2 <- Rsolnp::solnp(theta.hat, \(x) -llik.fun(x, dati.gen),
+    # theta.psi2 <- Rsolnp::solnp(theta.hat, \(x) -llik.fn(x, dati.gen),
     #                            eqfun = \(t) t[param], eqB = psi0,
     #                            control = list(trace = 0))$pars
     # print(paste("Psi0 =", psi0))
@@ -57,7 +66,7 @@ rp.stat <- function(dati.gen, psi0, init, param = match("beta5", names(init)),
     # print(((theta.psi - theta.psi2)/theta.psi))
   }
   if (!isFALSE(exact)) {
-    theta.psi <- Rsolnp::solnp(theta.psi, \(x) -llik.fun(x, dati.gen),
+    theta.psi <- Rsolnp::solnp(theta.psi, \(x) -llik.fn(x, dati.gen),
                                eqfun = \(t) t[param], eqB = psi0,
                                control = list(trace = 0))$pars
     ## Equivalente ma più lenta:
@@ -65,14 +74,14 @@ rp.stat <- function(dati.gen, psi0, init, param = match("beta5", names(init)),
     #   z <- theta.hat
     #   z[param] <- psi0
     #   z[-param] <- x
-    #   -llik.fun(z, dati.gen)
+    #   -llik.fn(z, dati.gen)
     # })$par
     # theta.psi <- theta.hat
     # theta.psi[param] <- psi0
     # theta.psi[-param] <- lam0
   }
   if (par.only) return(theta.psi)
-  lp0 <- llik.fun(theta.psi, dati.gen)
+  lp0 <- llik.fn(theta.psi, dati.gen)
   rp <- unname(sign(theta.hat[param] - psi0) * sqrt(2) * sqrt(l.hat - lp0))
   for (a in export) attr(rp, a) <- get(a, environment())
   rp

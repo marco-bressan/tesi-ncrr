@@ -27,7 +27,7 @@ crr.sigma.int <- function(pp, baseline = TRUE) {
   if (USA_MIA_MODELLAZIONE) {
     # in questa parte del codice voglio provare ad implementare la mia
     # versione della ncrr senza baseline. si può cambiare settando la
-    # variabile globale (a livello di pacchetto) pari a FALSE: in questo caso
+    # variabile globale (a livello di pacchetto) pari a FALSE, nel qual caso
     # si userà la parametrizzazione di Guolo
     # !!! SI ASSUME CHE il baseline SIA IN PRIMA POSIZIONE !!!
     # === DA RIVEDERE ===
@@ -43,6 +43,7 @@ crr.sigma.int <- function(pp, baseline = TRUE) {
   # sigma_12 = cov(eps1_01, eps1_02) = rho * sigma_01 * sigma_02
   return(tcrossprod(beta) * pp$sigma20 + diag(sigmab, 2))
 }
+
 
 ##' Funzioni a basso livello per il calcolo dei parametri della distribuzione
 ##' marginale (normale) della NCRR

@@ -269,11 +269,11 @@ vcov.ncrr.design <- function(object, x0, llik.fn = get.llik.from.design(object),
                              ...,
                              score = NULL, J = NULL) {
   n <- length(object$design)
-  J <- J %||% -optimHess(x0, llik.fn, gr = score.fn, ...)
+  J <- J %||% -1 / n * optimHess(x0, llik.fn, gr = score.fn, ...)
   invJ <- solve(J)
   if (isFALSE(sandwich))
     return(invJ)
   score <- if (is.null(score.fn)) pracma::grad(llik.fn, x0) else score.fn(x0)
-  I <- tcrossprod(score)
+  I <- 1 / n * tcrossprod(score)
   invJ %*% I %*% invJ
 }

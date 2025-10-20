@@ -17,7 +17,7 @@ NSIM <- 250
 VCOVTYPE <- "simple"
 
 #DIR <- "../.." # per il markdown
-DIR <- "/home/marco/output-tesi-morph/" # per l'esecuzione nel pacchetto
+DIR <- "/home/marco/output-tesi-morph-fix/" # per l'esecuzione nel pacchetto
 if (!dir.exists(DIR))
   dir.create(DIR)
 
@@ -64,18 +64,15 @@ for (k in seq_len(NSIM)) {
   message(sprintf("%.2f%%\r", k / NSIM * 100))
   # ------ OTTIMIZZAZIONE ----
   opt1 <- optim(init, \(x) -llik.fun(x, data = simu.des[[k]]),
+                gr = \(x) -attr(llik.fun, "score")(x, data = simu.des[[k]]),
                 method = "BFGS", hessian = TRUE)
 
-  for (R in as.integer(400*exp(1:2))){
-    message("--> R = ", R)
-    opt2 <- try(
-      crr.rstar(simu.des[[k]], thetainit = init, floglik = llik.fun,
-                fpsi = psi.fun,  psival = psi.fun(init), datagen = gendat.fun,
-                seed = c(17980L, 31642L, 8590L, 104005L, 1543L, 257L),
-                R = R, parallel = TRUE, trace = Inf)
-    )
-    if (!inherits(opt2, "try-error") && is.finite(opt2$rs)) break
-  }
+  opt2 <- try(
+    crr.rstar(simu.des[[k]], thetainit = init, floglik = llik.fun,
+              fpsi = psi.fun,  psival = psi.fun(init), datagen = gendat.fun,
+              seed = c(17980L, 31642L, 8590L, 104005L, 1543L, 257L),
+              R = 1000, parallel = TRUE, trace = Inf)
+  )
 
   saveRDS(list(optim = opt1, likasy = opt2),
           file = file.path(DIR, paste0("opt_", k, "_", as.integer(Sys.time()), ".rds")))
