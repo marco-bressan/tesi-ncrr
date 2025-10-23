@@ -29,11 +29,20 @@ devtools::load_all(".")
 
 # specifico il design della meta-analisi
 des2 <- ncrr.design(morphine)
+#des2 <- subset(des2, -c(55, 56))
 
 opt.fn <- get.llik.from.design(des2, vcov.type = "achana",
                                stop.on.fail = FALSE, echo = 0)
 opt1 <- optim(ini2 <- getInitial(des2, vcov.type = "achana"),
               \(x) -opt.fn(x), method = "BFGS")
+coef.lin <- c(d01 = -14.4203564915261, d02 = -12.945532211613,
+              d03 = -10.6134503816058,
+              beta01 = -0.398094090719703, beta02 = -0.376597507267113,
+              beta03 = -0.205343585278029)
+ini2[1:6] <- c(coef.lin[1:3] - coef.lin[4:6] * 45.25833, coef.lin[4:6] + 1)
+ini2["mu0"] <-  45.25833
+opt12 <- optim(ini2, \(x) -opt.fn(x), method = "BFGS")
+
 crr.split.par(opt1$par, transform = TRUE, fixed = match.vcov.fixed("achana"))
 opt1hess <- optimHess(opt1$par, \(x) -opt.fn(x))
 cbind(opt1$par,
@@ -46,10 +55,6 @@ cbind(opt1$par,
         diag() |>
         sqrt()
       ) |> round(4)
-
-
-
-
 
 
 
@@ -132,7 +137,7 @@ opt2 <- optim(ini12, \(x) -opt.fn(x), method = "BFGS",
               gr = \(x) -attr(opt.fn, "score")(x))
 confronta.gr(opt2$par, opt.fn, perf = F)
 nlminb(ini12, \(x) -opt.fn(x), gradient = \(x) -attr(opt.fn, "score")(x)) # false convergence
-nlminb(ini12, \(x) -opt.fn(x)) # false convergence
+nlminb(ini12, \(x) -opt.fn(x))
 crr.split.par(opt2$par, 6, transform = TRUE, fixed = match.vcov.fixed("achana"))
 
 #'

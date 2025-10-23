@@ -3,6 +3,11 @@ library(lme4)
 
 load("data/morphine.rda")
 
+
+devtools::load_all()
+
+des <- ncrr.design(morphine)
+
 # versione di achana??
 
 # In questa parte del codice provo a ricreare un modello lineare analogo a

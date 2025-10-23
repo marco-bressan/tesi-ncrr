@@ -13,17 +13,19 @@ crr.mu.int <- function(pp, baseline = TRUE) {
 }
 
 crr.sigma.int <- function(pp, baseline = TRUE) {
+  sig <- sqrt(pp$sigma2)
   if (baseline) {
     # minore matrice vcov ottenuto togliendo la prima riga e la prima colonna
     #if (length(beta) > 1 && all(c(beta, sigma20, sigma2) != 1)) browser()
-    pp$sigma2 <- sqrt(pp$sigma2)
     #if (any(!is.finite(sigma2))) browser()#stop("sigma2 negativo!")
     vv <- tcrossprod(c(1, pp$beta)) * pp$sigma20
-    vv[-1, -1] <- vv[-1, -1] + tcrossprod(pp$sigma2) *
+    vv[-1, -1] <- vv[-1, -1] + tcrossprod(sig) *
       diagoffdiag(1, pp$rho, length(pp$beta))
     return(vv)
   }
-  sigmab <- pp$rho * sqrt(pp$sigma2[-1] * pp$sigma2[1]) # c(sigma^2_12, sigma^2_21)
+  # sigma_12 = cov(eps1_01, eps1_02) = rho * sigma_01 * sigma_02
+  sigmab <- pp$rho * sig[-1] * sig[1] # c(sigma^2_12, sigma^2_21)
+  betab <- pp$beta[-1] - pp$beta[1]
   if (USA_MIA_MODELLAZIONE) {
     # in questa parte del codice voglio provare ad implementare la mia
     # versione della ncrr senza baseline. si può cambiare settando la
@@ -31,7 +33,6 @@ crr.sigma.int <- function(pp, baseline = TRUE) {
     # si userà la parametrizzazione di Guolo
     # !!! SI ASSUME CHE il baseline SIA IN PRIMA POSIZIONE !!!
     # === DA RIVEDERE ===
-    betab <- pp$beta[-1] - pp$beta[1]
     vub <- pp$beta[1]^2 * pp$sigma20 + pp$sigma2[1]
     vv <- tcrossprod(c(1, betab)) * vub
     vv[-1, -1] <- vv[-1, -1] +
@@ -39,9 +40,8 @@ crr.sigma.int <- function(pp, baseline = TRUE) {
       tcrossprod(sigmab)
     return(vv)
   }
-  beta <- c(pp$beta[1] - pp$beta[2], pp$beta[2] - pp$beta[1])
-  # sigma_12 = cov(eps1_01, eps1_02) = rho * sigma_01 * sigma_02
-  return(tcrossprod(beta) * pp$sigma20 + diag(sigmab, 2))
+  betab <- c(betab, -betab)
+  return(tcrossprod(betab) * pp$sigma20) # + diag(sigmab, 2)
 }
 
 
@@ -70,8 +70,8 @@ crr.mean <- function(params, design = c(0, 1)) {
       # in questa parte del codice voglio provare ad implementare la mia
       # versione della ncrr senza baseline. si può cambiare settando la
       # variabile globale (a livello di pacchetto) pari a FALSE: in questo caso
-      # si userà la parametrizzazione di Guolo !!! SI ASSUME CHE b SIA IN PRIMA
-      # POSIZIONE !!!
+      # si userà la parametrizzazione di Guolo
+      # !!! SI ASSUME CHE b SIA IN PRIMA POSIZIONE !!!
       mu_ib <- params$alpha[1] + params$beta[1] * params$mu0
       mu <- c(mu_ib, params$alpha[-1] - params$alpha[1] + (params$beta[-1] - params$beta[1]) * mu_ib)
       return(mu)
@@ -92,8 +92,8 @@ crr.vcov <- function(params, design = c(0, 1)) {
       # in questa parte del codice voglio provare ad implementare la mia
       # versione della ncrr senza baseline. si può cambiare settando la
       # variabile globale (a livello di pacchetto) pari a FALSE: in questo caso
-      # si userà la parametrizzazione di Guolo !!! SI ASSUME CHE b SIA IN PRIMA
-      # POSIZIONE !!!
+      # si userà la parametrizzazione di Guolo
+      #!!! SI ASSUME CHE b SIA IN PRIMA POSIZIONE !!!
       betab <- params$beta[-1] - params$beta[1]
       sigmab <- sqrt(params$rho * params$sigma2[-1] * params$sigma2[1])
       if (any(!is.finite(sigmab))) {
